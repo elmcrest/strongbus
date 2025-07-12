@@ -1,0 +1,21 @@
+[project]
+name = "strongbus"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [{ name = "Marius Räsener", email = "marius@raesener.de" }]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "tox",
+    "build",
+]
+
+[project.scripts]
+strongbus = "strongbus:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
