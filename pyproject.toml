@@ -1,17 +1,15 @@
 [project]
 name = "strongbus"
 version = "0.1.0"
-description = "Add your description here"
+description = "A type-safe event bus library for Python that provides reliable publish-subscribe messaging with automatic memory management and full type safety."
 readme = "README.md"
 authors = [{ name = "Marius Räsener", email = "marius@raesener.de" }]
 requires-python = ">=3.10"
 dependencies = []
+keywords = ["events", "event-bus", "typed", "type-safe", "pubsub"]
 
 [project.optional-dependencies]
-dev = [
-    "tox",
-    "build",
-]
+dev = ["tox", "build"]
 
 [project.scripts]
 strongbus = "strongbus:main"
