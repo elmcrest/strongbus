@@ -19,6 +19,9 @@ jobs:
             - name: run tox
               run: tox
             
+            - name: run test with latest python for codecov
+              run: uv run --extra dev pytest --cov --cov-branch --cov-report=xml
+              
             - name: Upload coverage reports to Codecov
               uses: codecov/codecov-action@v5
               with:

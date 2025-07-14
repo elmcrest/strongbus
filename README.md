@@ -1,4 +1,5 @@
 
+[![codecov](https://codecov.io/github/elmcrest/strongbus/graph/badge.svg?token=GMSWeOkKQS)](https://codecov.io/github/elmcrest/strongbus)
 # StrongBus
 
 A type-safe event bus library for Python that provides reliable publish-subscribe messaging with automatic memory management, full type safety, and global event subscriptions for cross-cutting concerns like logging.

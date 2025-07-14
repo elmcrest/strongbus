@@ -9,7 +9,7 @@ wheels/
 .mypy_cache
 .pytest_cache
 .ruff_cache
-
+coverage.xml
 # Virtual environments
 .venv
 .tox
