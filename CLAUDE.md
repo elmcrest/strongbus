@@ -2,53 +2,54 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commands
+## Development Commands
 
 ### Testing
-```bash
-python -m unittest src/strongbus/tests.py
-```
+- Run all tests: `python -m unittest src/strongbus/test_core.py`
+- Run tests with tox (across multiple Python versions): `tox`
+- Install tox with uv: `uv tool install tox --with tox-uv`
 
-### Build and Package
-```bash
-python -m build
-```
+### Building
+- Build package: `python -m build`
+- Build with tox: `tox -e build`
 
-### Install in Development Mode
-```bash
-pip install -e .
-```
+### Installation
+- Development installation: `pip install -e .`
+- Development installation with tox: `tox -e dev`
 
-## Architecture
+## Architecture Overview
 
-StrongBus is a type-safe event bus library for Python with these core components:
+StrongBus is a type-safe event bus library with three core components:
 
-### Core Classes (`src/strongbus/core.py`)
-- **Event**: Base class for all events. All event types must inherit from this class.
-- **EventBus**: Central event dispatcher that manages subscriptions and publishing
-  - Uses weak references for method callbacks to prevent memory leaks
-  - Strong references for function callbacks
-  - Type-safe subscription with generic type constraints
-- **Enrollment**: Abstract base class that provides subscription management with automatic cleanup
-  - Tracks all subscriptions for easy bulk unsubscription via `clear()`
-  - Delegates to EventBus for actual event handling
+### Core Components (`src/strongbus/core.py`)
+- **Event**: Base class for all events - simple data containers that inherit from Event
+- **EventBus**: Central hub managing subscriptions and publishing events
+  - Uses weak references for method callbacks (automatic cleanup)
+  - Strong references for function callbacks (manual cleanup required)
+  - Type-safe subscription system with generics
+- **Enrollment**: Base class for objects that need to manage multiple event subscriptions
+  - Tracks all subscriptions for easy bulk cleanup with `clear()`
+  - Inherits from ABC and provides convenient subscription management
 
 ### Key Design Patterns
-- **Type Safety**: Uses generics (`SpecificEvent = TypeVar("SpecificEvent", bound=Event)`) to ensure callbacks receive the correct event type
-- **Memory Management**: Automatic cleanup of dead method references using `weakref.WeakMethod`
-- **Inheritance Isolation**: Events don't propagate to parent/child types - each event type is handled independently
-- **Subscription Tracking**: Enrollment pattern allows components to manage their own subscriptions lifecycle
+- **Type Safety**: Callbacks are typed to receive specific event types using generics
+- **Memory Management**: Automatic cleanup of dead method references via `weakref.WeakMethod`
+- **Event Isolation**: Events don't propagate to parent/child types - exact type matching only
+- **Subscription Tracking**: Enrollment pattern allows bulk unsubscription
 
-### Event Flow
-1. Create event classes by inheriting from `Event` (typically as frozen dataclasses)
-2. Components inherit from `Enrollment` and subscribe to specific event types
-3. Events are published through EventBus and delivered only to exact type matches
-4. Cleanup handled automatically via weak references or explicit `clear()` calls
+### Project Structure
+- `src/strongbus/__init__.py`: Public API exports (EventBus, Event, Enrollment)
+- `src/strongbus/core.py`: Core implementation (108 lines)
+- `src/strongbus/test_core.py`: Comprehensive test suite
+- `src/strongbus/py.typed`: Type hint marker for mypy
 
-### Testing
-Comprehensive test suite in `src/strongbus/tests.py` covers:
-- Basic subscription/publishing
-- Multiple subscribers
-- Type isolation
-- Memory management (weak references)
-- Subscription cleanup
+### Dependencies
+- Zero runtime dependencies (pure Python)
+- Development dependencies: tox, build, pytest-cov (defined in pyproject.toml)
+- Supports Python 3.10+ (as specified in pyproject.toml)
+
+### Testing Strategy
+- Uses Python's built-in unittest framework
+- Mock objects for testing callbacks
+- Tests cover weak reference cleanup, type isolation, and memory management
+- Tox configuration tests against Python 3.10, 3.11, 3.12, 3.13

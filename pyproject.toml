@@ -12,7 +12,7 @@ keywords = ["events", "event-bus", "typed", "type-safe", "pubsub"]
 Repository = "https://github.com/elmcrest/strongbus"
 
 [project.optional-dependencies]
-dev = ["tox", "build"]
+dev = ["tox", "build", "pytest-cov>=6.2.1"]
 
 [project.scripts]
 strongbus = "strongbus:main"
