@@ -1,13 +1,14 @@
 
 # StrongBus
 
-A type-safe event bus library for Python that provides reliable publish-subscribe messaging with automatic memory management and full type safety.
+A type-safe event bus library for Python that provides reliable publish-subscribe messaging with automatic memory management, full type safety, and global event subscriptions for cross-cutting concerns like logging.
 
 ## Features
 
 - **Type Safety**: Full type checking with generics ensures callbacks receive the correct event types
 - **Memory Management**: Automatic cleanup of dead references using weak references for methods
 - **Subscription Management**: Easy subscription tracking and bulk cleanup via the Enrollment pattern
+- **Global Subscriptions**: Subscribe to all events for cross-cutting concerns like logging and monitoring
 - **Event Isolation**: Events don't propagate to parent/child types - each event type is handled independently
 - **Zero Dependencies**: Pure Python implementation with no external dependencies
 
@@ -102,6 +103,51 @@ class OrderProcessor(Enrollment):
     def confirm_payment(self, event: PaymentReceivedEvent) -> None:
         # Handle payment confirmation
         pass
+```
+
+## Global Event Subscriptions
+
+StrongBus supports global event subscriptions for services that need to receive all events, such as logging or monitoring services:
+
+```python
+class LoggerService(Enrollment):
+    """Example service that logs all events using global subscription."""
+    
+    def __init__(self, event_bus: EventBus):
+        super().__init__(event_bus)
+        self.subscribe_global(self._log_event)
+    
+    def _log_event(self, event: Event) -> None:
+        """Log any event that occurs."""
+        event_type = type(event).__name__
+        print(f"[LOG] {event_type}: {event}")
+
+# Usage
+event_bus = EventBus()
+logger = LoggerService(event_bus)
+
+# Create other services
+notification_service = NotificationService(event_bus)
+
+# All events will be logged automatically
+event_bus.publish(UserLoginEvent(username="Alice"))
+# Output: 
+# [LOG] UserLoginEvent: UserLoginEvent(username='Alice')
+# Welcome Alice!
+
+event_bus.publish(OrderCreatedEvent(order_id="123", customer_id="user1", total=99.99))
+# Output:
+# [LOG] OrderCreatedEvent: OrderCreatedEvent(order_id='123', customer_id='user1', total=99.99)
+```
+
+Global subscriptions can be managed just like regular subscriptions:
+
+```python
+# Unsubscribe from global events
+logger.unsubscribe_global(logger._log_event)
+
+# Or clear all subscriptions (including global ones)
+logger.clear()
 ```
 
 ## Memory Management
