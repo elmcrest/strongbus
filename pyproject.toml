@@ -1,6 +1,6 @@
 [project]
 name = "strongbus"
-version = "0.1.0"
+version = "0.1.1"
 description = "A type-safe event bus library for Python that provides reliable publish-subscribe messaging with automatic memory management and full type safety."
 readme = "README.md"
 authors = [{ name = "Marius Räsener", email = "marius@raesener.de" }]
