@@ -8,6 +8,9 @@ requires-python = ">=3.10"
 dependencies = []
 keywords = ["events", "event-bus", "typed", "type-safe", "pubsub"]
 
+[project.urls]
+Repository = "https://github.com/elmcrest/strongbus"
+
 [project.optional-dependencies]
 dev = ["tox", "build"]
 
