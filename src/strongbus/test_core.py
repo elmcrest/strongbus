@@ -286,6 +286,12 @@ class TestEventBusEdgeCases(unittest.TestCase):
         self.assertEqual(initial_count, 2)
         self.assertEqual(final_count, 1)
 
+    def test_untyped_event_raises(self):
+        with self.assertRaises(
+            AssertionError
+        ):  # Replace TypeError with the expected exception
+            self.bus.publish("untyped_event")
+
 
 class TestGlobalSubscriptions(unittest.TestCase):
     def setUp(self):
@@ -295,13 +301,13 @@ class TestGlobalSubscriptions(unittest.TestCase):
         """Test global subscription receives all events"""
         callback = Mock()
         self.bus.subscribe_global(callback)
-        
+
         event1 = MyEvent("test1")
         event2 = AnotherEvent(42)
-        
+
         self.bus.publish(event1)
         self.bus.publish(event2)
-        
+
         self.assertEqual(callback.call_count, 2)
         callback.assert_any_call(event1)
         callback.assert_any_call(event2)
@@ -310,13 +316,13 @@ class TestGlobalSubscriptions(unittest.TestCase):
         """Test global and specific subscriptions work together"""
         global_callback = Mock()
         specific_callback = Mock()
-        
+
         self.bus.subscribe_global(global_callback)
         self.bus.subscribe(MyEvent, specific_callback)
-        
+
         event = MyEvent("test")
         self.bus.publish(event)
-        
+
         global_callback.assert_called_once_with(event)
         specific_callback.assert_called_once_with(event)
 
@@ -324,65 +330,67 @@ class TestGlobalSubscriptions(unittest.TestCase):
         """Test global unsubscription"""
         callback = Mock()
         self.bus.subscribe_global(callback)
-        
+
         event1 = MyEvent("test1")
         self.bus.publish(event1)
         callback.assert_called_once_with(event1)
-        
+
         self.bus.unsubscribe_global(callback)
         callback.reset_mock()
-        
+
         event2 = MyEvent("test2")
         self.bus.publish(event2)
         callback.assert_not_called()
 
     def test_global_subscription_method_cleanup(self):
         """Test global subscription with method callbacks are cleaned up"""
+
         class GlobalSubscriber:
             def __init__(self):
                 self.events = []
-                
+
             def on_event(self, event: Event):
                 self.events.append(event)
-        
+
         sub = GlobalSubscriber()
         self.bus.subscribe_global(sub.on_event)
-        
+
         event = MyEvent("test")
         self.bus.publish(event)
         self.assertEqual(len(sub.events), 1)
-        
+
         # Delete subscriber and force garbage collection
         del sub
         gc.collect()
-        
+
         # Publishing should clean up dead reference
         initial_count = len(self.bus._global_subscribers)
         self.bus.publish(MyEvent("test2"))
         final_count = len(self.bus._global_subscribers)
-        
+
         self.assertEqual(initial_count, 1)
         self.assertEqual(final_count, 0)
 
     def test_enrollment_global_subscription(self):
         """Test Enrollment global subscription functionality"""
+
         class GlobalService(Enrollment):
             def __init__(self, event_bus: EventBus):
                 super().__init__(event_bus)
                 self.events = []
                 self.subscribe_global(self.on_any_event)
-                
+
             def on_any_event(self, event: Event):
                 self.events.append(event)
-        
+
         service = GlobalService(self.bus)
-        
+
         event1 = MyEvent("test1")
         event2 = AnotherEvent(42)
-        
+
         self.bus.publish(event1)
         self.bus.publish(event2)
-        
+
         self.assertEqual(len(service.events), 2)
         self.assertIn(event1, service.events)
         self.assertIn(event2, service.events)
@@ -390,21 +398,21 @@ class TestGlobalSubscriptions(unittest.TestCase):
     def test_enrollment_global_unsubscribe(self):
         """Test Enrollment global unsubscription"""
         callback = Mock()
-        
+
         class GlobalService(Enrollment):
             def __init__(self, event_bus: EventBus):
                 super().__init__(event_bus)
                 self.subscribe_global(callback)
-        
+
         service = GlobalService(self.bus)
-        
+
         event1 = MyEvent("test1")
         self.bus.publish(event1)
         callback.assert_called_once_with(event1)
-        
+
         service.unsubscribe_global(callback)
         callback.reset_mock()
-        
+
         event2 = MyEvent("test2")
         self.bus.publish(event2)
         callback.assert_not_called()
@@ -412,24 +420,24 @@ class TestGlobalSubscriptions(unittest.TestCase):
     def test_enrollment_clear_includes_global(self):
         """Test Enrollment.clear() removes global subscriptions"""
         callback = Mock()
-        
+
         class GlobalService(Enrollment):
             def __init__(self, event_bus: EventBus):
                 super().__init__(event_bus)
                 self.subscribe_global(callback)
                 self.subscribe(MyEvent, callback)
-        
+
         service = GlobalService(self.bus)
-        
+
         # Verify both subscriptions work
         event = MyEvent("test")
         self.bus.publish(event)
         self.assertEqual(callback.call_count, 2)  # Global + specific
-        
+
         # Clear all subscriptions
         service.clear()
         callback.reset_mock()
-        
+
         self.bus.publish(MyEvent("test2"))
         callback.assert_not_called()
 

@@ -77,8 +77,11 @@ class EventBus:
 
     def publish(self, event: Event) -> None:
         """Publish an event to all subscribers of its type and all global subscribers."""
+        assert isinstance(event, Event), (
+            "strongbus only handles events of type Event (or subclasses)"
+        )
         event_type = type(event)
-        
+
         # Notify specific event type subscribers
         if event_type in self._subscribers:
             subscribers = self._subscribers[event_type][
@@ -93,9 +96,11 @@ class EventBus:
                         self._subscribers[event_type].remove(weak_cb)
                 else:
                     weak_cb(event)
-        
+
         # Notify global subscribers
-        global_subscribers = self._global_subscribers[:]  # Copy to avoid modification during iteration
+        global_subscribers = self._global_subscribers[
+            :
+        ]  # Copy to avoid modification during iteration
         for weak_cb in global_subscribers:
             if isinstance(weak_cb, weakref.WeakMethod):
                 global_cb: Callable[[Event], None] | None = weak_cb()
@@ -141,7 +146,9 @@ class Enrollment(ABC):
 
     def unsubscribe_global(self, callback: Callable[[Event], None]) -> None:
         """Unsubscribe from all events."""
-        self._global_subscriptions = [cb for cb in self._global_subscriptions if cb != callback]
+        self._global_subscriptions = [
+            cb for cb in self._global_subscriptions if cb != callback
+        ]
         self._event_bus.unsubscribe_global(callback)
 
     def publish(self, event: Event) -> None:
@@ -154,7 +161,7 @@ class Enrollment(ABC):
             for callback in callbacks:
                 self._event_bus.unsubscribe(event_type, callback)
         self._subscriptions.clear()
-        
+
         for callback in self._global_subscriptions:
             self._event_bus.unsubscribe_global(callback)
         self._global_subscriptions.clear()
