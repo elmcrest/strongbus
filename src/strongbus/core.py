@@ -77,9 +77,10 @@ class EventBus:
 
     def publish(self, event: Event) -> None:
         """Publish an event to all subscribers of its type and all global subscribers."""
-        assert isinstance(event, Event), (
-            "strongbus only handles events of type Event (or subclasses)"
-        )
+        if not isinstance(event, Event):
+            raise TypeError(
+                "strongbus only handles events of type Event (or subclasses)"
+            )
         event_type = type(event)
 
         # Notify specific event type subscribers

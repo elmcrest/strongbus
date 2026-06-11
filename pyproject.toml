@@ -1,6 +1,6 @@
 [project]
 name = "strongbus"
-version = "0.1.3"
+version = "0.2.0"
 description = "A type-safe event bus library for Python that provides reliable publish-subscribe messaging with automatic memory management, full type safety, and global event subscriptions for cross-cutting concerns like logging."
 readme = "README.md"
 authors = [{ name = "Marius Räsener", email = "marius@raesener.de" }]
@@ -13,9 +13,6 @@ Repository = "https://github.com/elmcrest/strongbus"
 
 [project.optional-dependencies]
 dev = ["tox", "build", "pytest-cov>=6.2.1", "ruff>=0.12.3", "ty>=0.0.1a14"]
-
-[project.scripts]
-strongbus = "strongbus:main"
 
 [build-system]
 requires = ["hatchling"]

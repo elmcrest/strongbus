@@ -287,9 +287,7 @@ class TestEventBusEdgeCases(unittest.TestCase):
         self.assertEqual(final_count, 1)
 
     def test_untyped_event_raises(self):
-        with self.assertRaises(
-            AssertionError
-        ):  # Replace TypeError with the expected exception
+        with self.assertRaises(TypeError):
             self.bus.publish("untyped_event")
 
 
