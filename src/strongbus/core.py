@@ -1,8 +1,8 @@
 import inspect
 import threading
 import weakref
-from abc import ABC
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union
+from collections.abc import Callable, Sequence
+from typing import TypeVar
 
 
 class Event:
@@ -26,20 +26,20 @@ class PublishError(ExceptionGroup):
 SpecificEvent = TypeVar("SpecificEvent", bound=Event)
 
 EventHandler = Callable[[Event], None]
-SubscriberType = Union[EventHandler, weakref.WeakMethod[EventHandler]]
+SubscriberType = EventHandler | weakref.WeakMethod[EventHandler]
 
 
 class EventBus:
     def __init__(self):
         self._lock = threading.RLock()
-        self._subscribers: Dict[Type[Event], List[SubscriberType]] = {}
-        self._global_subscribers: List[SubscriberType] = []
+        self._subscribers: dict[type[Event], list[SubscriberType]] = {}
+        self._global_subscribers: list[SubscriberType] = []
         # Dead WeakMethods queued by their death callbacks. A death callback
         # can fire whenever the gc runs - on any thread, even while this
         # thread holds the lock - so it must only append here (atomic);
         # actual removal happens in _flush_pending under the lock.
-        self._pending_removals: List[
-            Tuple[Optional[Type[Event]], "weakref.WeakMethod[EventHandler]"]
+        self._pending_removals: list[
+            tuple[type[Event] | None, "weakref.WeakMethod[EventHandler]"]
         ] = []
 
     def _flush_pending(self) -> None:
@@ -65,9 +65,14 @@ class EventBus:
 
     @staticmethod
     def _is_subscribed(
-        subscribers: List[SubscriberType], callback: Callable[..., None]
+        subscribers: list[SubscriberType], callback: Callable[..., None]
     ) -> bool:
-        """Check whether a live entry for this callback already exists."""
+        """Check whether a live entry for this callback already exists.
+
+        Compares with == rather than identity: bound methods are recreated
+        on every attribute access, so `obj.method is obj.method` is False
+        while equality compares the underlying (object, function) pair.
+        """
         for weak_cb in subscribers:
             if isinstance(weak_cb, weakref.WeakMethod):
                 if weak_cb() == callback:
@@ -77,7 +82,7 @@ class EventBus:
         return False
 
     def subscribe(
-        self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
+        self, event_type: type[SpecificEvent], callback: Callable[[SpecificEvent], None]
     ) -> None:
         """Subscribe to a specific event type with a type-safe callback.
 
@@ -127,7 +132,7 @@ class EventBus:
             self._global_subscribers.append(global_weak_callback)
 
     def unsubscribe(
-        self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
+        self, event_type: type[SpecificEvent], callback: Callable[[SpecificEvent], None]
     ) -> None:
         """Unsubscribe a callback from a specific event type.
 
@@ -141,7 +146,7 @@ class EventBus:
         with self._lock:
             self._flush_pending()
             if event_type in self._subscribers:
-                to_remove: List[SubscriberType] = []
+                to_remove: list[SubscriberType] = []
                 for weak_cb in self._subscribers[event_type]:
                     if isinstance(weak_cb, weakref.WeakMethod):
                         cb: Callable[[Event], None] | None = weak_cb()
@@ -152,6 +157,8 @@ class EventBus:
                             to_remove.append(weak_cb)
                 for r in to_remove:
                     self._subscribers[event_type].remove(r)
+                if not self._subscribers[event_type]:
+                    del self._subscribers[event_type]
 
     def unsubscribe_global(self, callback: Callable[[Event], None]) -> None:
         """Unsubscribe a global callback from all events.
@@ -162,7 +169,7 @@ class EventBus:
         """
         with self._lock:
             self._flush_pending()
-            to_remove: List[SubscriberType] = []
+            to_remove: list[SubscriberType] = []
             for weak_cb in self._global_subscribers:
                 if isinstance(weak_cb, weakref.WeakMethod):
                     cb: Callable[[Event], None] | None = weak_cb()
@@ -198,7 +205,7 @@ class EventBus:
             subscribers = list(self._subscribers.get(event_type, ()))
             global_subscribers = list(self._global_subscribers)
 
-        errors: List[Exception] = []
+        errors: list[Exception] = []
         for weak_cb in (*subscribers, *global_subscribers):
             if isinstance(weak_cb, weakref.WeakMethod):
                 cb: Callable[[Event], None] | None = weak_cb()
@@ -222,7 +229,7 @@ class EventBus:
             )
 
 
-class Enrollment(ABC):
+class Enrollment:
     """Tracks an object's subscriptions for bulk cleanup with clear().
 
     Tracking follows the bus's reference policy: bound methods are tracked
@@ -233,8 +240,8 @@ class Enrollment(ABC):
     def __init__(self, event_bus: EventBus):
         self._event_bus = event_bus
         self._lock = threading.RLock()
-        self._subscriptions: Dict[Type[Event], List[SubscriberType]] = {}
-        self._global_subscriptions: List[SubscriberType] = []
+        self._subscriptions: dict[type[Event], list[SubscriberType]] = {}
+        self._global_subscriptions: list[SubscriberType] = []
 
     @staticmethod
     def _wrap(callback: Callable[..., None]) -> SubscriberType:
@@ -243,14 +250,14 @@ class Enrollment(ABC):
         return callback
 
     @staticmethod
-    def _live(entry: SubscriberType) -> Optional[EventHandler]:
+    def _live(entry: SubscriberType) -> EventHandler | None:
         """Dereference a tracked entry; None if its owner has died."""
         if isinstance(entry, weakref.WeakMethod):
             return entry()
         return entry
 
     def subscribe(
-        self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
+        self, event_type: type[SpecificEvent], callback: Callable[[SpecificEvent], None]
     ) -> None:
         """Subscribe to an event type with automatic tracking.
 
@@ -286,7 +293,7 @@ class Enrollment(ABC):
             self._global_subscriptions.append(self._wrap(callback))
 
     def unsubscribe(
-        self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
+        self, event_type: type[SpecificEvent], callback: Callable[[SpecificEvent], None]
     ) -> None:
         """Unsubscribe from an event type."""
         with self._lock:

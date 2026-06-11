@@ -32,7 +32,7 @@ StrongBus is a type-safe event bus library with three core components:
 - **Enrollment**: Base class for objects that need to manage multiple event subscriptions
   - Tracks all subscriptions (including global ones) for easy bulk cleanup with `clear()`
   - Tracking mirrors the bus's reference policy: bound methods via `WeakMethod`, functions strongly — an Enrollment never keeps a subscriber object alive just by tracking it
-  - Inherits from ABC and provides convenient subscription management
+  - Provides convenient subscription management as a plain base class
 
 ### Key Design Patterns
 - **Type Safety**: Callbacks are typed to receive specific event types using generics
