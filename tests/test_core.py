@@ -360,6 +360,37 @@ class TestEventBusEdgeCases(unittest.TestCase):
         self.assertEqual(len(self.bus._global_subscribers), 1)  # pyright: ignore[reportPrivateUsage]
 
 
+class TestEventTypeValidation(unittest.TestCase):
+    def setUp(self):
+        self.bus = EventBus()
+
+    def test_subscribe_rejects_non_type(self):
+        with self.assertRaises(TypeError):
+            self.bus.subscribe("foo", Mock())
+
+    def test_subscribe_rejects_non_event_class(self):
+        with self.assertRaises(TypeError):
+            self.bus.subscribe(str, Mock())
+
+    def test_subscribe_rejects_event_instance(self):
+        with self.assertRaises(TypeError):
+            self.bus.subscribe(MyEvent("test"), Mock())
+
+    def test_unsubscribe_rejects_non_event_type(self):
+        with self.assertRaises(TypeError):
+            self.bus.unsubscribe("foo", Mock())
+
+    def test_enrollment_subscribe_rejects_and_does_not_track(self):
+        class Service(Enrollment):
+            pass
+
+        service = Service(self.bus)
+        with self.assertRaises(TypeError):
+            service.subscribe(MyEvent("test"), Mock())
+        self.assertEqual(service._subscriptions, {})  # pyright: ignore[reportPrivateUsage]
+        service.clear()
+
+
 class TestSubscriptionSetSemantics(unittest.TestCase):
     def setUp(self):
         self.bus = EventBus()

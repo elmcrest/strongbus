@@ -57,6 +57,13 @@ class EventBus:
                 pass  # already removed by unsubscribe or an earlier flush
 
     @staticmethod
+    def _validate_event_type(event_type: object) -> None:
+        if not (isinstance(event_type, type) and issubclass(event_type, Event)):
+            raise TypeError(
+                f"event_type must be an Event subclass, got {event_type!r}"
+            )
+
+    @staticmethod
     def _is_subscribed(
         subscribers: List[SubscriberType], callback: Callable[..., None]
     ) -> bool:
@@ -76,7 +83,10 @@ class EventBus:
 
         Subscriptions have set semantics: subscribing an already-subscribed
         callback is a no-op.
+
+        Raises TypeError if event_type is not an Event subclass.
         """
+        self._validate_event_type(event_type)
         with self._lock:
             self._flush_pending()
             if event_type not in self._subscribers:
@@ -124,7 +134,10 @@ class EventBus:
         Not a delivery barrier: a publish already in flight on another
         thread iterates a snapshot of the subscriber list, so the callback
         may still be invoked once after this returns.
+
+        Raises TypeError if event_type is not an Event subclass.
         """
+        self._validate_event_type(event_type)
         with self._lock:
             self._flush_pending()
             if event_type in self._subscribers:
@@ -223,14 +236,17 @@ class Enrollment(ABC):
 
         Subscriptions have set semantics: subscribing an already-subscribed
         callback is a no-op.
+
+        Raises TypeError if event_type is not an Event subclass.
         """
         with self._lock:
+            if callback in self._subscriptions.get(event_type, []):
+                return
+            # subscribe first so a rejected event_type is never tracked
+            self._event_bus.subscribe(event_type, callback)
             if event_type not in self._subscriptions:
                 self._subscriptions[event_type] = []
-            if callback in self._subscriptions[event_type]:
-                return
             self._subscriptions[event_type].append(callback)  # type: ignore
-            self._event_bus.subscribe(event_type, callback)
 
     def subscribe_global(self, callback: Callable[[Event], None]) -> None:
         """Subscribe to all events with automatic tracking.
