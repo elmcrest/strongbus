@@ -2,7 +2,7 @@
 
 Notable changes to strongbus. History before 0.3.0 is in the git log.
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-06-11
 
 ### Changed
 
