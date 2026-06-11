@@ -88,6 +88,13 @@ event_bus.publish(OrderCreatedEvent(
 
 Subscriptions have set semantics: a callback is either subscribed to an event type or it isn't. Subscribing the same callback again is a no-op, and `unsubscribe` removes it entirely. Callbacks are matched by identity (bound methods by the instance and function they wrap), never by `==`, so two distinct handlers that happen to compare equal are still two subscriptions.
 
+Identity matching means subscribers can't be kept in a hash-based set, so
+`subscribe` and `unsubscribe` scan the event type's subscriber list linearly.
+With the typical handful of subscribers per event type this is negligible —
+but if you register thousands of subscribers for a single event type, expect
+those operations (not `publish`, which is linear in subscriber count anyway)
+to scale accordingly.
+
 Set semantics apply at the bus level, not per Enrollment: if two Enrollments on
 the same bus subscribe the same callback object to the same event type, the
 second subscribe is a no-op, and whichever clears first removes the

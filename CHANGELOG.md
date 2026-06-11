@@ -31,6 +31,13 @@ Notable changes to strongbus. History before 0.3.0 is in the git log.
   out of the box. The `lint` tox env is a pure check; auto-fixing moved to a
   new `fix` env, and CI now enforces lint and typecheck.
 
+### Fixed
+
+- `Enrollment.unsubscribe` and `Enrollment.unsubscribe_global` no longer
+  remove a bus subscription the enrollment never made. Previously they
+  delegated to the bus unconditionally, so an enrollment could unsubscribe
+  a callback that another owner had registered directly on the bus.
+
 ### Added
 
 - `PublishError`, exported from the package root.
@@ -43,3 +50,5 @@ Notable changes to strongbus. History before 0.3.0 is in the git log.
   returns.
 - Subscription set semantics are bus-level: two Enrollments on the same bus
   subscribing the same callback object share a single subscription.
+- Identity matching implies linear-scan bookkeeping: `subscribe` and
+  `unsubscribe` are linear in the event type's subscriber count.

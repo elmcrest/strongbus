@@ -232,6 +232,36 @@ class TestEnrollment(unittest.TestCase):
         my_callback.assert_not_called()
         another_callback.assert_called_once()
 
+    def test_enrollment_unsubscribe_leaves_untracked_callback_on_bus(self):
+        """Unsubscribing a callback this enrollment never subscribed must
+        not remove another owner's bus subscription"""
+        external = Mock()
+        self.bus.subscribe(MyEvent, external)
+
+        class TestService(Enrollment):
+            def __init__(self, event_bus: EventBus):
+                super().__init__(event_bus)
+                self.subscribe(MyEvent, Mock())  # tracks something for MyEvent
+
+        service = TestService(self.bus)
+        service.unsubscribe(MyEvent, external)
+
+        event = MyEvent("test")
+        self.bus.publish(event)
+        external.assert_called_once_with(event)
+
+    def test_enrollment_unsubscribe_global_leaves_untracked_callback_on_bus(self):
+        """Same guarantee for global subscriptions"""
+        external = Mock()
+        self.bus.subscribe_global(external)
+
+        service = Enrollment(self.bus)
+        service.unsubscribe_global(external)
+
+        event = MyEvent("test")
+        self.bus.publish(event)
+        external.assert_called_once_with(event)
+
     def test_enrollment_unsubscribe_cleans_empty_subscriptions(self):
         """Test that unsubscribing removes empty subscription lists"""
         callback = Mock()
@@ -490,6 +520,17 @@ class TestEventTypeValidation(unittest.TestCase):
     def test_unsubscribe_rejects_non_event_type(self):
         with self.assertRaises(TypeError):
             self.bus.unsubscribe("foo", Mock())
+
+    def test_enrollment_unsubscribe_rejects_untracked_non_event_type(self):
+        """Validation must not be short-circuited by the not-tracked early
+        return"""
+
+        class Service(Enrollment):
+            pass
+
+        service = Service(self.bus)
+        with self.assertRaises(TypeError):
+            service.unsubscribe("foo", Mock())
 
     def test_enrollment_subscribe_rejects_and_does_not_track(self):
         class Service(Enrollment):
