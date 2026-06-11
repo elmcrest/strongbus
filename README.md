@@ -88,6 +88,12 @@ event_bus.publish(OrderCreatedEvent(
 
 Subscriptions have set semantics: a callback is either subscribed to an event type or it isn't. Subscribing the same callback again is a no-op, and `unsubscribe` removes it entirely.
 
+Set semantics apply at the bus level, not per Enrollment: if two Enrollments on
+the same bus subscribe the same callback object to the same event type, the
+second subscribe is a no-op, and whichever clears first removes the
+subscription for both. Give each Enrollment its own callback (typically its own
+bound methods) to keep their lifecycles independent.
+
 ### Enrollment
 
 A base class that simplifies subscription management:

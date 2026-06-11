@@ -235,7 +235,10 @@ class Enrollment(ABC):
         """Subscribe to an event type with automatic tracking.
 
         Subscriptions have set semantics: subscribing an already-subscribed
-        callback is a no-op.
+        callback is a no-op. The set lives on the bus, not per enrollment:
+        if another enrollment on the same bus subscribed the same callback
+        to the same event type, this is a no-op and whichever clears first
+        removes the subscription for both.
 
         Raises TypeError if event_type is not an Event subclass.
         """
