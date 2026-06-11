@@ -9,7 +9,7 @@ This project is managed with `uv`. For tox, use a global install with the tox-uv
 ### Testing
 - Run all tests: `uv run --extra dev pytest`
 - With coverage (as CI does): `uv run --extra dev pytest --cov --cov-branch --cov-report=xml`
-- Across Python 3.10–3.13: `tox`
+- Across Python 3.10–3.14: `tox`
 
 ### Linting and Type Checking
 - Lint with ruff (auto-fix): `tox -e lint`
@@ -54,4 +54,4 @@ StrongBus is a type-safe event bus library with three core components:
 - Tests are written with Python's unittest framework and run via pytest
 - Mock objects for testing callbacks
 - Tests cover weak reference cleanup, type isolation, global subscriptions, and memory management
-- CI (GitHub Actions) runs `tox` against Python 3.10–3.13 and uploads coverage to Codecov
+- CI (GitHub Actions) runs `tox` against Python 3.10–3.14 and uploads coverage to Codecov
