@@ -119,7 +119,12 @@ class EventBus:
     def unsubscribe(
         self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
     ) -> None:
-        """Unsubscribe a callback from a specific event type."""
+        """Unsubscribe a callback from a specific event type.
+
+        Not a delivery barrier: a publish already in flight on another
+        thread iterates a snapshot of the subscriber list, so the callback
+        may still be invoked once after this returns.
+        """
         with self._lock:
             self._flush_pending()
             if event_type in self._subscribers:
@@ -136,7 +141,12 @@ class EventBus:
                     self._subscribers[event_type].remove(r)
 
     def unsubscribe_global(self, callback: Callable[[Event], None]) -> None:
-        """Unsubscribe a global callback from all events."""
+        """Unsubscribe a global callback from all events.
+
+        Not a delivery barrier: a publish already in flight on another
+        thread iterates a snapshot of the subscriber list, so the callback
+        may still be invoked once after this returns.
+        """
         with self._lock:
             self._flush_pending()
             to_remove: List[SubscriberType] = []
@@ -156,7 +166,8 @@ class EventBus:
 
         Callbacks run on the publishing thread, outside the internal lock, so
         they may freely subscribe, unsubscribe, or publish. A subscription
-        added while a publish is in flight only receives subsequent events.
+        added while a publish is in flight only receives subsequent events;
+        one removed while a publish is in flight may still receive that event.
 
         A subscriber that raises does not affect delivery to the others:
         every subscriber is notified first, then the publisher sees the

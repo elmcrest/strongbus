@@ -200,6 +200,9 @@ internal lock. This means:
 - A callback may freely subscribe, unsubscribe, or publish further events without deadlocking.
 - If events are published from multiple threads, your callbacks must be thread-safe themselves.
 - A subscription added while a publish is in flight only receives subsequent events.
+- `unsubscribe()` is not a delivery barrier: a publish already in flight on
+  another thread iterates a snapshot of the subscriber list, so the callback
+  may still be invoked once after `unsubscribe()` returns.
 
 ## Testing
 
