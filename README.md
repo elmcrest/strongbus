@@ -95,11 +95,14 @@ but if you register thousands of subscribers for a single event type, expect
 those operations (not `publish`, which is linear in subscriber count anyway)
 to scale accordingly.
 
-Set semantics apply at the bus level, not per Enrollment: if two Enrollments on
-the same bus subscribe the same callback object to the same event type, the
-second subscribe is a no-op, and whichever clears first removes the
-subscription for both. Give each Enrollment its own callback (typically its own
-bound methods) to keep their lifecycles independent.
+Set semantics apply at the bus level, not per Enrollment: if a callback is
+already subscribed to an event type — directly on the bus or through another
+Enrollment — subscribing it again through an Enrollment is a no-op that does
+not take ownership. A subscription is removed only by whoever created it: an
+Enrollment's `unsubscribe`/`clear` only touch subscriptions made through that
+Enrollment (`EventBus.subscribe` returns `True` when it actually added the
+subscription). Give each Enrollment its own callback (typically its own bound
+methods) to keep their lifecycles independent.
 
 ### Enrollment
 

@@ -38,3 +38,15 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+# keep tests, tox.ini, and uv.lock for downstream packagers;
+# exclude repo tooling that has no use in a source archive
+# (.gitignore can't be excluded: hatchling always ships it because
+# rebuilding from the sdist selects files through it)
+exclude = [
+    ".github",
+    ".python-version",
+    ".vscode",
+    "CLAUDE.md",
+]

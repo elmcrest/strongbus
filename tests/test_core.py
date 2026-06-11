@@ -262,6 +262,51 @@ class TestEnrollment(unittest.TestCase):
         self.bus.publish(event)
         external.assert_called_once_with(event)
 
+    def test_enrollment_does_not_take_ownership_of_existing_subscription(self):
+        """A no-op subscribe must not be tracked: clear() must leave a
+        subscription that was made directly on the bus beforehand"""
+        callback = Mock()
+        self.bus.subscribe(MyEvent, callback)
+
+        service = Enrollment(self.bus)
+        service.subscribe(MyEvent, callback)  # bus-level no-op, not tracked
+        service.clear()
+
+        event = MyEvent("test")
+        self.bus.publish(event)
+        callback.assert_called_once_with(event)
+
+    def test_enrollment_does_not_take_ownership_of_existing_global_subscription(self):
+        """Same guarantee for global subscriptions"""
+        callback = Mock()
+        self.bus.subscribe_global(callback)
+
+        service = Enrollment(self.bus)
+        service.subscribe_global(callback)
+        service.clear()
+
+        event = MyEvent("test")
+        self.bus.publish(event)
+        callback.assert_called_once_with(event)
+
+    def test_shared_subscription_owned_by_first_enrollment(self):
+        """When two enrollments subscribe the same callback, only the one
+        that created the subscription removes it"""
+        callback = Mock()
+        first = Enrollment(self.bus)
+        second = Enrollment(self.bus)
+        first.subscribe(MyEvent, callback)
+        second.subscribe(MyEvent, callback)  # no-op, second does not own it
+
+        second.clear()
+        self.bus.publish(MyEvent("test"))
+        callback.assert_called_once()
+
+        first.clear()
+        callback.reset_mock()
+        self.bus.publish(MyEvent("test2"))
+        callback.assert_not_called()
+
     def test_enrollment_unsubscribe_cleans_empty_subscriptions(self):
         """Test that unsubscribing removes empty subscription lists"""
         callback = Mock()
@@ -656,6 +701,20 @@ class TestSubscriptionSetSemantics(unittest.TestCase):
         self.bus.subscribe_global(callback)
         self.bus.publish(MyEvent("test"))
         callback.assert_called_once()
+
+    def test_subscribe_reports_whether_newly_subscribed(self):
+        callback = Mock()
+        self.assertTrue(self.bus.subscribe(MyEvent, callback))
+        self.assertFalse(self.bus.subscribe(MyEvent, callback))
+        self.bus.unsubscribe(MyEvent, callback)
+        self.assertTrue(self.bus.subscribe(MyEvent, callback))
+
+    def test_subscribe_global_reports_whether_newly_subscribed(self):
+        callback = Mock()
+        self.assertTrue(self.bus.subscribe_global(callback))
+        self.assertFalse(self.bus.subscribe_global(callback))
+        self.bus.unsubscribe_global(callback)
+        self.assertTrue(self.bus.subscribe_global(callback))
 
     def test_resubscribe_after_unsubscribe(self):
         callback = Mock()

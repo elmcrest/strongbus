@@ -95,11 +95,12 @@ class EventBus:
 
     def subscribe(
         self, event_type: type[SpecificEvent], callback: Callable[[SpecificEvent], None]
-    ) -> None:
+    ) -> bool:
         """Subscribe to a specific event type with a type-safe callback.
 
         Subscriptions have set semantics: subscribing an already-subscribed
-        callback is a no-op.
+        callback is a no-op. Returns True if the callback was newly
+        subscribed, False if it was already subscribed.
 
         Raises TypeError if event_type is not an Event subclass.
         """
@@ -110,7 +111,7 @@ class EventBus:
                 self._subscribers[event_type] = []
 
             if _is_subscribed(self._subscribers[event_type], callback):
-                return
+                return False
 
             if inspect.ismethod(callback):
                 weak_callback = weakref.WeakMethod(
@@ -121,17 +122,19 @@ class EventBus:
                 weak_callback = callback  # type: ignore[assignment]
 
             self._subscribers[event_type].append(weak_callback)
+            return True
 
-    def subscribe_global(self, callback: Callable[[Event], None]) -> None:
+    def subscribe_global(self, callback: Callable[[Event], None]) -> bool:
         """Subscribe to all events with a callback that receives any event.
 
         Subscriptions have set semantics: subscribing an already-subscribed
-        callback is a no-op.
+        callback is a no-op. Returns True if the callback was newly
+        subscribed, False if it was already subscribed.
         """
         with self._lock:
             self._flush_pending()
             if _is_subscribed(self._global_subscribers, callback):
-                return
+                return False
 
             if inspect.ismethod(callback):
                 global_weak_callback = weakref.WeakMethod(
@@ -142,6 +145,7 @@ class EventBus:
                 global_weak_callback = callback  # type: ignore[assignment]
 
             self._global_subscribers.append(global_weak_callback)
+            return True
 
     def unsubscribe(
         self, event_type: type[SpecificEvent], callback: Callable[[SpecificEvent], None]
@@ -275,17 +279,21 @@ class Enrollment:
 
         Subscriptions have set semantics: subscribing an already-subscribed
         callback is a no-op. The set lives on the bus, not per enrollment:
-        if another enrollment on the same bus subscribed the same callback
-        to the same event type, this is a no-op and whichever clears first
-        removes the subscription for both.
+        if the same callback is already subscribed to the same event type -
+        directly on the bus or through another enrollment - this is a no-op
+        and ownership stays with the original subscriber; this enrollment
+        will not track or remove that subscription.
 
         Raises TypeError if event_type is not an Event subclass.
         """
         with self._lock:
             if _is_subscribed(self._subscriptions.get(event_type, []), callback):
                 return
-            # subscribe first so a rejected event_type is never tracked
-            self._event_bus.subscribe(event_type, callback)
+            # subscribe first so a rejected event_type is never tracked;
+            # only track what the bus actually added, so clear() never
+            # removes a subscription this enrollment did not create
+            if not self._event_bus.subscribe(event_type, callback):
+                return
             if event_type not in self._subscriptions:
                 self._subscriptions[event_type] = []
             self._subscriptions[event_type].append(self._wrap(callback))
@@ -294,12 +302,15 @@ class Enrollment:
         """Subscribe to all events with automatic tracking.
 
         Subscriptions have set semantics: subscribing an already-subscribed
-        callback is a no-op.
+        callback is a no-op. If the callback is already subscribed globally
+        elsewhere, ownership stays with the original subscriber; this
+        enrollment will not track or remove that subscription.
         """
         with self._lock:
             if _is_subscribed(self._global_subscriptions, callback):
                 return
-            self._event_bus.subscribe_global(callback)
+            if not self._event_bus.subscribe_global(callback):
+                return
             self._global_subscriptions.append(self._wrap(callback))
 
     @staticmethod
