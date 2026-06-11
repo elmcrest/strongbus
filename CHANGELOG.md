@@ -20,6 +20,16 @@ Notable changes to strongbus. History before 0.3.0 is in the git log.
   alive, and self-subscribing enrollments no longer form a reference cycle.
 - `Enrollment` no longer inherits from `abc.ABC` (it declared no abstract
   methods, so it was already instantiable).
+- Callbacks are matched by identity (bound methods by the instance and
+  function they wrap) instead of `==`. A callable with a custom `__eq__` can
+  no longer be silently deduplicated against - or unsubscribed in place of -
+  a different handler.
+- Dead-reference cleanup now also drops emptied event-type keys, so a
+  dynamically created event class is no longer kept alive after its last
+  subscriber is gone.
+- The `dev` extra now includes `tox-uv`, so `uv run --extra dev tox` works
+  out of the box. The `lint` tox env is a pure check; auto-fixing moved to a
+  new `fix` env, and CI now enforces lint and typecheck.
 
 ### Added
 

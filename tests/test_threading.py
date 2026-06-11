@@ -151,10 +151,10 @@ class TestThreadSafety(unittest.TestCase):
         self.assertEqual(errors, [])
 
         # All Subscriber instances are gone; one more bus operation must
-        # purge every dead entry.
+        # purge every dead entry, including the emptied key.
         gc.collect()
         self.bus.publish(TickEvent(0))
-        self.assertEqual(len(self.bus._subscribers[TickEvent]), 0)  # pyright: ignore[reportPrivateUsage]
+        self.assertEqual(len(self.bus._subscribers.get(TickEvent, [])), 0)  # pyright: ignore[reportPrivateUsage]
 
     def test_callback_can_use_bus_without_deadlock(self):
         """Callbacks run outside the bus lock and may re-enter it, even while

@@ -388,13 +388,37 @@ class TestEventBusEdgeCases(unittest.TestCase):
         del sub
         gc.collect()
 
-        # Publish an unrelated event type - MyEvent's dead entry must go too
+        # Publish an unrelated event type - MyEvent's dead entry must go,
+        # including the now-empty key itself
         self.bus.publish(AnotherEvent(42))
-        self.assertEqual(len(self.bus._subscribers[MyEvent]), 0)  # pyright: ignore[reportPrivateUsage]
+        self.assertNotIn(MyEvent, self.bus._subscribers)  # pyright: ignore[reportPrivateUsage]
 
     def test_untyped_event_raises(self):
         with self.assertRaises(TypeError):
             self.bus.publish("untyped_event")
+
+    def test_dead_subscriber_does_not_pin_event_type(self):
+        """An emptied subscriber list must not keep the event class alive"""
+
+        class Subscriber:
+            def on_event(self, event: Event):
+                pass
+
+        DynamicEvent = type("DynamicEvent", (Event,), {})
+        type_ref = weakref.ref(DynamicEvent)
+
+        sub = Subscriber()
+        self.bus.subscribe(DynamicEvent, sub.on_event)
+        del sub
+        gc.collect()
+
+        # any bus operation flushes the dead entry and the emptied key
+        self.bus.publish(MyEvent("test"))
+        self.assertNotIn(type_ref(), self.bus._subscribers)  # pyright: ignore[reportPrivateUsage]
+
+        del DynamicEvent
+        gc.collect()  # type objects always need the cycle collector
+        self.assertIsNone(type_ref())
 
     def test_reentrant_publish_with_dead_subscriber(self):
         """A callback publishing the same event type must not crash dead-ref cleanup"""
@@ -476,6 +500,88 @@ class TestEventTypeValidation(unittest.TestCase):
             service.subscribe(MyEvent("test"), Mock())
         self.assertEqual(service._subscriptions, {})  # pyright: ignore[reportPrivateUsage]
         service.clear()
+
+
+class TestCallbackIdentityMatching(unittest.TestCase):
+    """Callbacks are matched by identity, not ==, so a custom __eq__ can
+    neither deduplicate nor unsubscribe a different handler."""
+
+    def setUp(self):
+        self.bus = EventBus()
+
+    class Handler:
+        """Callable whose instances all compare equal"""
+
+        def __init__(self):
+            self.calls = 0
+
+        def __call__(self, event: Event) -> None:
+            self.calls += 1
+
+        def __eq__(self, other: object) -> bool:
+            return isinstance(other, TestCallbackIdentityMatching.Handler)
+
+        def __hash__(self) -> int:
+            return 0
+
+    def test_equal_callable_instances_both_registered(self):
+        a, b = self.Handler(), self.Handler()
+        self.bus.subscribe(MyEvent, a)
+        self.bus.subscribe(MyEvent, b)
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual((a.calls, b.calls), (1, 1))
+
+    def test_unsubscribe_removes_only_the_identical_callable(self):
+        a, b = self.Handler(), self.Handler()
+        self.bus.subscribe(MyEvent, a)
+        self.bus.subscribe(MyEvent, b)
+        self.bus.unsubscribe(MyEvent, a)
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual((a.calls, b.calls), (0, 1))
+
+    def test_bound_methods_of_equal_instances_both_registered(self):
+        class Model:
+            def __init__(self):
+                self.calls = 0
+
+            def on_event(self, event: Event) -> None:
+                self.calls += 1
+
+            def __eq__(self, other: object) -> bool:
+                return isinstance(other, Model)
+
+            def __hash__(self) -> int:
+                return 0
+
+        a, b = Model(), Model()
+        self.bus.subscribe(MyEvent, a.on_event)
+        self.bus.subscribe(MyEvent, b.on_event)
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual((a.calls, b.calls), (1, 1))
+
+        self.bus.unsubscribe(MyEvent, a.on_event)
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual((a.calls, b.calls), (1, 2))
+
+    def test_bound_method_still_matched_across_accesses(self):
+        """obj.method is a new object each access; set semantics must hold"""
+
+        class Model:
+            def __init__(self):
+                self.calls = 0
+
+            def on_event(self, event: Event) -> None:
+                self.calls += 1
+
+        model = Model()
+        self.bus.subscribe(MyEvent, model.on_event)
+        self.bus.subscribe(MyEvent, model.on_event)  # no-op
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual(model.calls, 1)
+
+        self.bus.unsubscribe(MyEvent, model.on_event)
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual(model.calls, 1)
 
 
 class TestSubscriptionSetSemantics(unittest.TestCase):

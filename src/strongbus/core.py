@@ -29,6 +29,20 @@ EventHandler = Callable[[Event], None]
 SubscriberType = EventHandler | weakref.WeakMethod[EventHandler]
 
 
+def _same_callback(a: Callable[..., None], b: Callable[..., None]) -> bool:
+    """Whether two callables denote the same subscriber.
+
+    Bound methods are recreated on every attribute access, so they are
+    matched by the identity of their (__self__, __func__) pair; everything
+    else is matched by plain identity. Equality is deliberately not used:
+    a callable with custom __eq__ could otherwise silently match - and be
+    deduplicated or unsubscribed as - a different handler.
+    """
+    if inspect.ismethod(a) and inspect.ismethod(b):
+        return a.__self__ is b.__self__ and a.__func__ is b.__func__
+    return a is b
+
+
 class EventBus:
     def __init__(self):
         self._lock = threading.RLock()
@@ -55,6 +69,10 @@ class EventBus:
                 target.remove(ref)
             except ValueError:
                 pass  # already removed by unsubscribe or an earlier flush
+            # drop an emptied key: it would otherwise keep the event class
+            # itself alive, a leak for dynamically created event types
+            if event_type is not None and not target:
+                self._subscribers.pop(event_type, None)
 
     @staticmethod
     def _validate_event_type(event_type: object) -> None:
@@ -67,17 +85,13 @@ class EventBus:
     def _is_subscribed(
         subscribers: list[SubscriberType], callback: Callable[..., None]
     ) -> bool:
-        """Check whether a live entry for this callback already exists.
-
-        Compares with == rather than identity: bound methods are recreated
-        on every attribute access, so `obj.method is obj.method` is False
-        while equality compares the underlying (object, function) pair.
-        """
+        """Check whether a live entry for this callback already exists."""
         for weak_cb in subscribers:
             if isinstance(weak_cb, weakref.WeakMethod):
-                if weak_cb() == callback:
+                cb = weak_cb()
+                if cb is not None and _same_callback(cb, callback):
                     return True
-            elif weak_cb == callback:
+            elif _same_callback(weak_cb, callback):
                 return True
         return False
 
@@ -150,10 +164,10 @@ class EventBus:
                 for weak_cb in self._subscribers[event_type]:
                     if isinstance(weak_cb, weakref.WeakMethod):
                         cb: Callable[[Event], None] | None = weak_cb()
-                        if cb is not None and cb == callback:
+                        if cb is not None and _same_callback(cb, callback):
                             to_remove.append(weak_cb)
                     else:
-                        if weak_cb == callback:
+                        if _same_callback(weak_cb, callback):
                             to_remove.append(weak_cb)
                 for r in to_remove:
                     self._subscribers[event_type].remove(r)
@@ -173,10 +187,10 @@ class EventBus:
             for weak_cb in self._global_subscribers:
                 if isinstance(weak_cb, weakref.WeakMethod):
                     cb: Callable[[Event], None] | None = weak_cb()
-                    if cb is not None and cb == callback:
+                    if cb is not None and _same_callback(cb, callback):
                         to_remove.append(weak_cb)
                 else:
-                    if weak_cb == callback:
+                    if _same_callback(weak_cb, callback):
                         to_remove.append(weak_cb)
             for r in to_remove:
                 self._global_subscribers.remove(r)
@@ -302,7 +316,8 @@ class Enrollment:
                 self._subscriptions[event_type] = [
                     entry
                     for entry in self._subscriptions[event_type]
-                    if (cb := self._live(entry)) is not None and cb != callback
+                    if (cb := self._live(entry)) is not None
+                    and not _same_callback(cb, callback)
                 ]
                 self._event_bus.unsubscribe(event_type, callback)
                 if not self._subscriptions[event_type]:
@@ -314,7 +329,8 @@ class Enrollment:
             self._global_subscriptions = [
                 entry
                 for entry in self._global_subscriptions
-                if (cb := self._live(entry)) is not None and cb != callback
+                if (cb := self._live(entry)) is not None
+                and not _same_callback(cb, callback)
             ]
             self._event_bus.unsubscribe_global(callback)
 

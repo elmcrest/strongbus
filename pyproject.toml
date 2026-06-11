@@ -26,7 +26,14 @@ classifiers = [
 Repository = "https://github.com/elmcrest/strongbus"
 
 [project.optional-dependencies]
-dev = ["tox", "build", "pytest-cov>=6.2.1", "ruff>=0.12.3", "ty>=0.0.1a14"]
+dev = [
+    "tox",
+    "tox-uv",
+    "build",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.3",
+    "ty>=0.0.1a14",
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
-This project is managed with `uv`. For tox, use a global install with the tox-uv plugin: `uv tool install tox --with tox-uv` (the plain `tox` from the dev extra does not include the plugin and fails on this tox.ini).
+This project is managed with `uv`. The dev extra includes tox with the tox-uv plugin, so `uv run --extra dev tox` works; a global install via `uv tool install tox --with tox-uv` works too.
 
 ### Testing
 - Run all tests: `uv run --extra dev pytest`
@@ -12,7 +12,8 @@ This project is managed with `uv`. For tox, use a global install with the tox-uv
 - Across Python 3.11–3.14: `tox`
 
 ### Linting and Type Checking
-- Lint with ruff (auto-fix): `tox -e lint`
+- Lint check (no changes): `tox -e lint`
+- Lint with auto-fix: `tox -e fix`
 - Type check with ty: `tox -e ty`
 
 ### Building
@@ -36,10 +37,10 @@ StrongBus is a type-safe event bus library with three core components:
 
 ### Key Design Patterns
 - **Type Safety**: Callbacks are typed to receive specific event types using generics
-- **Memory Management**: Automatic cleanup of dead method references via `weakref.WeakMethod`; death callbacks queue dead entries in `_pending_removals`, purged on the next bus operation under the lock
+- **Memory Management**: Automatic cleanup of dead method references via `weakref.WeakMethod`; death callbacks queue dead entries in `_pending_removals`, purged on the next bus operation under the lock. Emptied event-type keys are dropped so they don't pin (dynamically created) event classes
 - **Event Isolation**: Events don't propagate to parent/child types - exact type matching only (global subscribers receive everything)
 - **Subscription Tracking**: Enrollment pattern allows bulk unsubscription
-- **Set Semantics**: Subscribing an already-subscribed callback is a no-op; a callback is either subscribed or not
+- **Set Semantics**: Subscribing an already-subscribed callback is a no-op; a callback is either subscribed or not. Callbacks are matched by identity (bound methods by their `(__self__, __func__)` pair), never by `==`, so a custom `__eq__` can't deduplicate or unsubscribe a different handler
 - **Thread Safety**: All operations are guarded by an RLock; publish snapshots subscriber lists under the lock but invokes callbacks outside it (so callbacks can re-enter the bus). WeakMethod death callbacks may fire at any moment on any thread, so they only append to `_pending_removals` and never touch the lock
 - **Error Isolation**: A raising callback doesn't block delivery to other subscribers; publish notifies everyone first, then re-raises a single failure unchanged or raises `PublishError` (an `ExceptionGroup` subclass) for multiple failures
 
@@ -59,4 +60,4 @@ StrongBus is a type-safe event bus library with three core components:
 - Tests are written with Python's unittest framework and run via pytest
 - Mock objects for testing callbacks
 - Tests cover weak reference cleanup, type isolation, global subscriptions, memory management, and thread safety (concurrent publish/subscribe churn, GC of subscribers during publishing)
-- CI (GitHub Actions) runs `tox` against Python 3.11–3.14 and uploads coverage to Codecov
+- CI (GitHub Actions) runs `tox` against Python 3.11–3.14, enforces `tox -e lint,ty`, and uploads coverage to Codecov
