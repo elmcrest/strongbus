@@ -166,6 +166,29 @@ StrongBus automatically manages memory to prevent leaks:
 > lambda that captures `self` keeps that object alive until you unsubscribe it.
 > Subscribe bound methods when you want automatic cleanup.
 
+## Error Handling
+
+A subscriber that raises does not affect delivery to other subscribers: every
+subscriber (including global ones) is notified first, and only then does the
+publisher see the failure.
+
+- If exactly one callback raised, its original exception is re-raised
+  unchanged, so existing `except SomeError:` handling around `publish()` keeps
+  working.
+- If several callbacks raised, a `strongbus.PublishError` (a subclass of the
+  built-in `ExceptionGroup`) is raised containing all of them — it works with
+  `except*` and exposes the individual exceptions via `.exceptions`.
+
+```python
+from strongbus import PublishError
+
+try:
+    event_bus.publish(OrderCreatedEvent(order_id="1", customer_id="u1", total=9.99))
+except PublishError as group:
+    for exc in group.exceptions:
+        log.error("subscriber failed", exc_info=exc)
+```
+
 ## Thread Safety
 
 `EventBus` and `Enrollment` are thread-safe: subscribing, unsubscribing, and

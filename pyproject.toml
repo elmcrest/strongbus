@@ -1,12 +1,12 @@
 [project]
 name = "strongbus"
-version = "0.2.0"
+version = "0.3.0"
 description = "A type-safe event bus library for Python that provides reliable publish-subscribe messaging with automatic memory management, full type safety, and global event subscriptions for cross-cutting concerns like logging."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Marius Räsener", email = "marius@raesener.de" }]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = []
 keywords = ["events", "event-bus", "typed", "type-safe", "pubsub"]
 

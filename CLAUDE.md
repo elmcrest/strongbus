@@ -9,7 +9,7 @@ This project is managed with `uv`. For tox, use a global install with the tox-uv
 ### Testing
 - Run all tests: `uv run --extra dev pytest`
 - With coverage (as CI does): `uv run --extra dev pytest --cov --cov-branch --cov-report=xml`
-- Across Python 3.10–3.14: `tox`
+- Across Python 3.11–3.14: `tox`
 
 ### Linting and Type Checking
 - Lint with ruff (auto-fix): `tox -e lint`
@@ -40,9 +40,10 @@ StrongBus is a type-safe event bus library with three core components:
 - **Subscription Tracking**: Enrollment pattern allows bulk unsubscription
 - **Set Semantics**: Subscribing an already-subscribed callback is a no-op; a callback is either subscribed or not
 - **Thread Safety**: All operations are guarded by an RLock; publish snapshots subscriber lists under the lock but invokes callbacks outside it (so callbacks can re-enter the bus). WeakMethod death callbacks may fire at any moment on any thread, so they only append to `_pending_removals` and never touch the lock
+- **Error Isolation**: A raising callback doesn't block delivery to other subscribers; publish notifies everyone first, then re-raises a single failure unchanged or raises `PublishError` (an `ExceptionGroup` subclass) for multiple failures
 
 ### Project Structure
-- `src/strongbus/__init__.py`: Public API exports (EventBus, Event, Enrollment)
+- `src/strongbus/__init__.py`: Public API exports (EventBus, Event, Enrollment, PublishError)
 - `src/strongbus/core.py`: Core implementation
 - `src/strongbus/py.typed`: Marker that the package ships type hints
 - `tests/test_core.py`: Core test suite
@@ -51,10 +52,10 @@ StrongBus is a type-safe event bus library with three core components:
 ### Dependencies
 - Zero runtime dependencies (pure Python)
 - Development dependencies (`dev` extra in pyproject.toml): tox, build, pytest-cov, ruff, ty
-- Supports Python 3.10+ (as specified in pyproject.toml)
+- Supports Python 3.11+ (as specified in pyproject.toml)
 
 ### Testing Strategy
 - Tests are written with Python's unittest framework and run via pytest
 - Mock objects for testing callbacks
 - Tests cover weak reference cleanup, type isolation, global subscriptions, memory management, and thread safety (concurrent publish/subscribe churn, GC of subscribers during publishing)
-- CI (GitHub Actions) runs `tox` against Python 3.10–3.14 and uploads coverage to Codecov
+- CI (GitHub Actions) runs `tox` against Python 3.11–3.14 and uploads coverage to Codecov

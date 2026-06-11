@@ -3,7 +3,7 @@ import unittest
 from dataclasses import dataclass
 from unittest.mock import Mock
 
-from strongbus import Enrollment, Event, EventBus
+from strongbus import Enrollment, Event, EventBus, PublishError
 
 
 @dataclass(frozen=True)
@@ -448,6 +448,86 @@ class TestSubscriptionSetSemantics(unittest.TestCase):
                 self.subscribe_global(callback)
 
         TestService(self.bus)
+        self.bus.publish(MyEvent("test"))
+        callback.assert_called_once()
+
+
+class TestPublishErrorHandling(unittest.TestCase):
+    def setUp(self):
+        self.bus = EventBus()
+
+    def test_failing_subscriber_does_not_block_others(self):
+        """A raising callback must not prevent delivery to later subscribers"""
+        good = Mock()
+        global_cb = Mock()
+
+        def bad(event: MyEvent) -> None:
+            raise ValueError("boom")
+
+        self.bus.subscribe(MyEvent, bad)
+        self.bus.subscribe(MyEvent, good)
+        self.bus.subscribe_global(global_cb)
+
+        event = MyEvent("test")
+        with self.assertRaises(ValueError):
+            self.bus.publish(event)
+
+        good.assert_called_once_with(event)
+        global_cb.assert_called_once_with(event)
+
+    def test_single_failure_reraises_original_exception(self):
+        def bad(event: MyEvent) -> None:
+            raise KeyError("missing")
+
+        self.bus.subscribe(MyEvent, bad)
+        with self.assertRaises(KeyError):
+            self.bus.publish(MyEvent("test"))
+
+    def test_multiple_failures_raise_publish_error(self):
+        def bad1(event: MyEvent) -> None:
+            raise ValueError("a")
+
+        def bad2(event: MyEvent) -> None:
+            raise KeyError("b")
+
+        self.bus.subscribe(MyEvent, bad1)
+        self.bus.subscribe(MyEvent, bad2)
+
+        with self.assertRaises(PublishError) as ctx:
+            self.bus.publish(MyEvent("test"))
+
+        self.assertEqual(len(ctx.exception.exceptions), 2)
+        self.assertIsInstance(ctx.exception, ExceptionGroup)
+        types = {type(exc) for exc in ctx.exception.exceptions}
+        self.assertEqual(types, {ValueError, KeyError})
+
+    def test_publish_error_splits_by_type(self):
+        """except* must preserve the PublishError subclass via derive()"""
+
+        def bad1(event: MyEvent) -> None:
+            raise ValueError("a")
+
+        def bad2(event: MyEvent) -> None:
+            raise KeyError("b")
+
+        self.bus.subscribe(MyEvent, bad1)
+        self.bus.subscribe(MyEvent, bad2)
+
+        caught = []
+        try:
+            self.bus.publish(MyEvent("test"))
+        except* ValueError as group:
+            caught.append(group)
+        except* KeyError as group:
+            caught.append(group)
+
+        self.assertEqual(len(caught), 2)
+        for group in caught:
+            self.assertIsInstance(group, PublishError)
+
+    def test_no_failures_raise_nothing(self):
+        callback = Mock()
+        self.bus.subscribe(MyEvent, callback)
         self.bus.publish(MyEvent("test"))
         callback.assert_called_once()
 

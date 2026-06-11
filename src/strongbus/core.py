@@ -2,13 +2,25 @@ import inspect
 import threading
 import weakref
 from abc import ABC
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 
 class Event:
     """Base class for all events. Subclass for specific types."""
 
     pass
+
+
+class PublishError(ExceptionGroup):
+    """Raised by publish when more than one subscriber raises.
+
+    Delivery always completes to every subscriber before this is raised.
+    If exactly one subscriber raises, its original exception is re-raised
+    instead of being wrapped.
+    """
+
+    def derive(self, excs: Sequence[Exception]) -> "PublishError":
+        return PublishError(self.message, list(excs))
 
 
 SpecificEvent = TypeVar("SpecificEvent", bound=Event)
@@ -145,6 +157,11 @@ class EventBus:
         Callbacks run on the publishing thread, outside the internal lock, so
         they may freely subscribe, unsubscribe, or publish. A subscription
         added while a publish is in flight only receives subsequent events.
+
+        A subscriber that raises does not affect delivery to the others:
+        every subscriber is notified first, then the publisher sees the
+        original exception (one failure) or a PublishError grouping them
+        (several failures).
         """
         if not isinstance(event, Event):
             raise TypeError(
@@ -157,24 +174,28 @@ class EventBus:
             subscribers = list(self._subscribers.get(event_type, ()))
             global_subscribers = list(self._global_subscribers)
 
-        # Notify specific event type subscribers
-        for weak_cb in subscribers:
+        errors: List[Exception] = []
+        for weak_cb in (*subscribers, *global_subscribers):
             if isinstance(weak_cb, weakref.WeakMethod):
                 cb: Callable[[Event], None] | None = weak_cb()
-                if cb is not None:
-                    cb(event)
-                # a dead ref was queued for removal by its death callback
+                if cb is None:
+                    # a dead ref was queued for removal by its death callback
+                    continue
             else:
-                weak_cb(event)
+                cb = weak_cb
+            try:
+                cb(event)
+            except Exception as exc:
+                errors.append(exc)
 
-        # Notify global subscribers
-        for weak_cb in global_subscribers:
-            if isinstance(weak_cb, weakref.WeakMethod):
-                global_cb: Callable[[Event], None] | None = weak_cb()
-                if global_cb is not None:
-                    global_cb(event)
-            else:
-                weak_cb(event)
+        if len(errors) == 1:
+            raise errors[0]
+        if errors:
+            raise PublishError(
+                f"{len(errors)} subscribers raised while handling "
+                f"{event_type.__name__}",
+                errors,
+            )
 
 
 class Enrollment(ABC):

@@ -1,3 +1,3 @@
-from .core import Enrollment, Event, EventBus
+from .core import Enrollment, Event, EventBus, PublishError
 
-__all__ = ["EventBus", "Event", "Enrollment"]
+__all__ = ["EventBus", "Event", "Enrollment", "PublishError"]
