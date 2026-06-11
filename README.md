@@ -165,7 +165,9 @@ StrongBus automatically manages memory to prevent leaks:
 
 - **Method callbacks** use weak references and are automatically cleaned up when the object is garbage collected
 - **Function callbacks** use strong references and persist until explicitly unsubscribed
-- **Enrollment pattern** provides easy bulk cleanup with `clear()`
+- **Enrollment pattern** provides easy bulk cleanup with `clear()`; its tracking
+  follows the same rule (bound methods are tracked weakly), so an Enrollment
+  never keeps a subscriber object alive just by tracking it
 
 > **Warning:** Only bound methods are held weakly. Lambdas, `functools.partial`
 > objects, and callable instances count as functions and are held strongly — a

@@ -1,5 +1,6 @@
 import gc
 import unittest
+import weakref
 from dataclasses import dataclass
 from unittest.mock import Mock
 
@@ -248,6 +249,92 @@ class TestEnrollment(unittest.TestCase):
         # Unsubscribe and verify cleanup
         service.unsubscribe(MyEvent, callback)
         self.assertNotIn(MyEvent, service._subscriptions)  # type: ignore[attr-defined]
+
+
+class TestEnrollmentMemoryManagement(unittest.TestCase):
+    def setUp(self):
+        self.bus = EventBus()
+
+    def test_enrollment_does_not_pin_foreign_subscriber(self):
+        """Tracking another object's bound method must not keep it alive"""
+
+        class Service(Enrollment):
+            pass
+
+        class Subscriber:
+            def on_event(self, event: MyEvent):
+                pass
+
+        service = Service(self.bus)
+        subscriber = Subscriber()
+        service.subscribe(MyEvent, subscriber.on_event)
+
+        ref = weakref.ref(subscriber)
+        del subscriber
+        gc.collect()
+        self.assertIsNone(ref())
+
+        # delivery and bulk cleanup still work with the dead tracked entry
+        self.bus.publish(MyEvent("test"))
+        service.clear()
+        self.assertEqual(service._subscriptions, {})  # pyright: ignore[reportPrivateUsage]
+
+    def test_self_subscribing_enrollment_is_reclaimed(self):
+        """Self-subscription must not create a cycle that delays collection"""
+
+        class Service(Enrollment):
+            def __init__(self, event_bus: EventBus):
+                super().__init__(event_bus)
+                self.subscribe(MyEvent, self.on_event)
+                self.subscribe_global(self.on_event)
+
+            def on_event(self, event: Event):
+                pass
+
+        service = Service(self.bus)
+        ref = weakref.ref(service)
+        del service
+        # no gc.collect(): plain refcounting must suffice (i.e. no cycle)
+        self.assertIsNone(ref())
+        self.bus.publish(MyEvent("test"))
+
+    def test_unsubscribe_prunes_dead_tracked_entries(self):
+        class Service(Enrollment):
+            pass
+
+        class Subscriber:
+            def on_event(self, event: MyEvent):
+                pass
+
+        service = Service(self.bus)
+        keep = Mock()
+        subscriber = Subscriber()
+        service.subscribe(MyEvent, subscriber.on_event)
+        service.subscribe(MyEvent, keep)
+
+        del subscriber
+        gc.collect()
+
+        service.unsubscribe(MyEvent, keep)
+        self.assertNotIn(MyEvent, service._subscriptions)  # pyright: ignore[reportPrivateUsage]
+
+    def test_enrollment_keeps_functions_alive(self):
+        """Functions and lambdas are still tracked strongly"""
+
+        class Service(Enrollment):
+            pass
+
+        service = Service(self.bus)
+        received = []
+        service.subscribe(MyEvent, lambda event: received.append(event))
+
+        gc.collect()
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual(len(received), 1)
+
+        service.clear()
+        self.bus.publish(MyEvent("test2"))
+        self.assertEqual(len(received), 1)
 
 
 # Additional EventBus edge case tests:

@@ -223,11 +223,31 @@ class EventBus:
 
 
 class Enrollment(ABC):
+    """Tracks an object's subscriptions for bulk cleanup with clear().
+
+    Tracking follows the bus's reference policy: bound methods are tracked
+    weakly, everything else strongly. An enrollment therefore never keeps a
+    subscriber object alive just by tracking it.
+    """
+
     def __init__(self, event_bus: EventBus):
         self._event_bus = event_bus
         self._lock = threading.RLock()
-        self._subscriptions: Dict[Type[Event], List[Callable[[Event], None]]] = {}
-        self._global_subscriptions: List[Callable[[Event], None]] = []
+        self._subscriptions: Dict[Type[Event], List[SubscriberType]] = {}
+        self._global_subscriptions: List[SubscriberType] = []
+
+    @staticmethod
+    def _wrap(callback: Callable[..., None]) -> SubscriberType:
+        if inspect.ismethod(callback):
+            return weakref.WeakMethod(callback)  # type: ignore[arg-type]
+        return callback
+
+    @staticmethod
+    def _live(entry: SubscriberType) -> Optional[EventHandler]:
+        """Dereference a tracked entry; None if its owner has died."""
+        if isinstance(entry, weakref.WeakMethod):
+            return entry()
+        return entry
 
     def subscribe(
         self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
@@ -243,13 +263,15 @@ class Enrollment(ABC):
         Raises TypeError if event_type is not an Event subclass.
         """
         with self._lock:
-            if callback in self._subscriptions.get(event_type, []):
+            if EventBus._is_subscribed(
+                self._subscriptions.get(event_type, []), callback
+            ):
                 return
             # subscribe first so a rejected event_type is never tracked
             self._event_bus.subscribe(event_type, callback)
             if event_type not in self._subscriptions:
                 self._subscriptions[event_type] = []
-            self._subscriptions[event_type].append(callback)  # type: ignore
+            self._subscriptions[event_type].append(self._wrap(callback))
 
     def subscribe_global(self, callback: Callable[[Event], None]) -> None:
         """Subscribe to all events with automatic tracking.
@@ -258,10 +280,10 @@ class Enrollment(ABC):
         callback is a no-op.
         """
         with self._lock:
-            if callback in self._global_subscriptions:
+            if EventBus._is_subscribed(self._global_subscriptions, callback):
                 return
-            self._global_subscriptions.append(callback)
             self._event_bus.subscribe_global(callback)
+            self._global_subscriptions.append(self._wrap(callback))
 
     def unsubscribe(
         self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
@@ -269,8 +291,11 @@ class Enrollment(ABC):
         """Unsubscribe from an event type."""
         with self._lock:
             if event_type in self._subscriptions:
+                # drops the matching entry and prunes dead ones
                 self._subscriptions[event_type] = [
-                    cb for cb in self._subscriptions[event_type] if cb != callback
+                    entry
+                    for entry in self._subscriptions[event_type]
+                    if (cb := self._live(entry)) is not None and cb != callback
                 ]
                 self._event_bus.unsubscribe(event_type, callback)
                 if not self._subscriptions[event_type]:
@@ -280,7 +305,9 @@ class Enrollment(ABC):
         """Unsubscribe from all events."""
         with self._lock:
             self._global_subscriptions = [
-                cb for cb in self._global_subscriptions if cb != callback
+                entry
+                for entry in self._global_subscriptions
+                if (cb := self._live(entry)) is not None and cb != callback
             ]
             self._event_bus.unsubscribe_global(callback)
 
@@ -291,11 +318,15 @@ class Enrollment(ABC):
     def clear(self) -> None:
         """Unsubscribe from all events."""
         with self._lock:
-            for event_type, callbacks in list(self._subscriptions.items()):
-                for callback in callbacks:
-                    self._event_bus.unsubscribe(event_type, callback)
+            for event_type, entries in list(self._subscriptions.items()):
+                for entry in entries:
+                    cb = self._live(entry)
+                    if cb is not None:  # dead refs were already purged by the bus
+                        self._event_bus.unsubscribe(event_type, cb)
             self._subscriptions.clear()
 
-            for callback in self._global_subscriptions:
-                self._event_bus.unsubscribe_global(callback)
+            for entry in self._global_subscriptions:
+                cb = self._live(entry)
+                if cb is not None:
+                    self._event_bus.unsubscribe_global(cb)
             self._global_subscriptions.clear()

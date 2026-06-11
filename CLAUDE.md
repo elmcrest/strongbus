@@ -31,6 +31,7 @@ StrongBus is a type-safe event bus library with three core components:
   - Global subscriptions via `subscribe_global`/`unsubscribe_global`: a callback receives every published event (for cross-cutting concerns like logging)
 - **Enrollment**: Base class for objects that need to manage multiple event subscriptions
   - Tracks all subscriptions (including global ones) for easy bulk cleanup with `clear()`
+  - Tracking mirrors the bus's reference policy: bound methods via `WeakMethod`, functions strongly — an Enrollment never keeps a subscriber object alive just by tracking it
   - Inherits from ABC and provides convenient subscription management
 
 ### Key Design Patterns
