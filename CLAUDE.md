@@ -38,6 +38,7 @@ StrongBus is a type-safe event bus library with three core components:
 - **Memory Management**: Automatic cleanup of dead method references via `weakref.WeakMethod`
 - **Event Isolation**: Events don't propagate to parent/child types - exact type matching only (global subscribers receive everything)
 - **Subscription Tracking**: Enrollment pattern allows bulk unsubscription
+- **Set Semantics**: Subscribing an already-subscribed callback is a no-op; a callback is either subscribed or not
 
 ### Project Structure
 - `src/strongbus/__init__.py`: Public API exports (EventBus, Event, Enrollment)

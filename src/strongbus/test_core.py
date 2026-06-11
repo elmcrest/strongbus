@@ -290,6 +290,148 @@ class TestEventBusEdgeCases(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.bus.publish("untyped_event")
 
+    def test_reentrant_publish_with_dead_subscriber(self):
+        """A callback publishing the same event type must not crash dead-ref cleanup"""
+
+        class Subscriber:
+            def on_event(self, event: MyEvent):
+                pass
+
+        nested = []
+
+        def reentrant(event: MyEvent):
+            if not nested:
+                nested.append(True)
+                self.bus.publish(MyEvent("nested"))
+
+        sub = Subscriber()
+        self.bus.subscribe(MyEvent, reentrant)
+        self.bus.subscribe(MyEvent, sub.on_event)
+
+        del sub
+        gc.collect()
+
+        # Outer publish iterates a copy containing the dead ref; the nested
+        # publish removes it first - the outer cleanup must tolerate that.
+        self.bus.publish(MyEvent("outer"))
+        self.assertEqual(len(self.bus._subscribers[MyEvent]), 1)  # pyright: ignore[reportPrivateUsage]
+
+    def test_reentrant_publish_with_dead_global_subscriber(self):
+        """Same reentrancy guarantee for global subscribers"""
+
+        class Subscriber:
+            def on_event(self, event: Event):
+                pass
+
+        nested = []
+
+        def reentrant(event: Event):
+            if not nested:
+                nested.append(True)
+                self.bus.publish(MyEvent("nested"))
+
+        sub = Subscriber()
+        self.bus.subscribe_global(reentrant)
+        self.bus.subscribe_global(sub.on_event)
+
+        del sub
+        gc.collect()
+
+        self.bus.publish(MyEvent("outer"))
+        self.assertEqual(len(self.bus._global_subscribers), 1)  # pyright: ignore[reportPrivateUsage]
+
+
+class TestSubscriptionSetSemantics(unittest.TestCase):
+    def setUp(self):
+        self.bus = EventBus()
+
+    def test_duplicate_subscribe_is_noop(self):
+        callback = Mock()
+        self.bus.subscribe(MyEvent, callback)
+        self.bus.subscribe(MyEvent, callback)
+        self.bus.publish(MyEvent("test"))
+        callback.assert_called_once()
+
+    def test_duplicate_subscribe_method_is_noop(self):
+        class Subscriber:
+            def __init__(self):
+                self.called = 0
+
+            def on_event(self, event: MyEvent):
+                self.called += 1
+
+        sub = Subscriber()
+        self.bus.subscribe(MyEvent, sub.on_event)
+        self.bus.subscribe(MyEvent, sub.on_event)
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual(sub.called, 1)
+
+    def test_duplicate_global_subscribe_is_noop(self):
+        callback = Mock()
+        self.bus.subscribe_global(callback)
+        self.bus.subscribe_global(callback)
+        self.bus.publish(MyEvent("test"))
+        callback.assert_called_once()
+
+    def test_resubscribe_after_unsubscribe(self):
+        callback = Mock()
+        self.bus.subscribe(MyEvent, callback)
+        self.bus.unsubscribe(MyEvent, callback)
+        self.bus.subscribe(MyEvent, callback)
+        self.bus.publish(MyEvent("test"))
+        callback.assert_called_once()
+
+    def test_resubscribe_after_owner_died(self):
+        class Subscriber:
+            def __init__(self):
+                self.called = 0
+
+            def on_event(self, event: MyEvent):
+                self.called += 1
+
+        sub1 = Subscriber()
+        self.bus.subscribe(MyEvent, sub1.on_event)
+        del sub1
+        gc.collect()
+
+        # The dead entry must not block a fresh subscription
+        sub2 = Subscriber()
+        self.bus.subscribe(MyEvent, sub2.on_event)
+        self.bus.publish(MyEvent("test"))
+        self.assertEqual(sub2.called, 1)
+
+    def test_enrollment_duplicate_subscribe_is_noop(self):
+        callback = Mock()
+
+        class TestService(Enrollment):
+            def __init__(self, event_bus: EventBus):
+                super().__init__(event_bus)
+                self.subscribe(MyEvent, callback)
+                self.subscribe(MyEvent, callback)
+
+        service = TestService(self.bus)
+        self.bus.publish(MyEvent("test"))
+        callback.assert_called_once()
+
+        # Tracking holds a single entry, so clear() stays consistent
+        service.clear()
+        callback.reset_mock()
+        self.bus.publish(MyEvent("test2"))
+        callback.assert_not_called()
+
+    def test_enrollment_duplicate_global_subscribe_is_noop(self):
+        callback = Mock()
+
+        class TestService(Enrollment):
+            def __init__(self, event_bus: EventBus):
+                super().__init__(event_bus)
+                self.subscribe_global(callback)
+                self.subscribe_global(callback)
+
+        TestService(self.bus)
+        self.bus.publish(MyEvent("test"))
+        callback.assert_called_once()
+
 
 class TestGlobalSubscriptions(unittest.TestCase):
     def setUp(self):

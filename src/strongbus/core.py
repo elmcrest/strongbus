@@ -21,12 +21,32 @@ class EventBus:
         self._subscribers: Dict[Type[Event], List[SubscriberType]] = {}
         self._global_subscribers: List[SubscriberType] = []
 
+    @staticmethod
+    def _is_subscribed(
+        subscribers: List[SubscriberType], callback: Callable[..., None]
+    ) -> bool:
+        """Check whether a live entry for this callback already exists."""
+        for weak_cb in subscribers:
+            if isinstance(weak_cb, weakref.WeakMethod):
+                if weak_cb() == callback:
+                    return True
+            elif weak_cb == callback:
+                return True
+        return False
+
     def subscribe(
         self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
     ) -> None:
-        """Subscribe to a specific event type with a type-safe callback."""
+        """Subscribe to a specific event type with a type-safe callback.
+
+        Subscriptions have set semantics: subscribing an already-subscribed
+        callback is a no-op.
+        """
         if event_type not in self._subscribers:
             self._subscribers[event_type] = []
+
+        if self._is_subscribed(self._subscribers[event_type], callback):
+            return
 
         if inspect.ismethod(callback):
             weak_callback = weakref.WeakMethod(callback)  # type: ignore[arg-type]
@@ -36,7 +56,14 @@ class EventBus:
         self._subscribers[event_type].append(weak_callback)
 
     def subscribe_global(self, callback: Callable[[Event], None]) -> None:
-        """Subscribe to all events with a callback that receives any event."""
+        """Subscribe to all events with a callback that receives any event.
+
+        Subscriptions have set semantics: subscribing an already-subscribed
+        callback is a no-op.
+        """
+        if self._is_subscribed(self._global_subscribers, callback):
+            return
+
         if inspect.ismethod(callback):
             global_weak_callback = weakref.WeakMethod(callback)  # type: ignore[arg-type]
         else:
@@ -94,7 +121,10 @@ class EventBus:
                     if cb is not None:
                         cb(event)
                     else:
-                        self._subscribers[event_type].remove(weak_cb)
+                        try:
+                            self._subscribers[event_type].remove(weak_cb)
+                        except ValueError:
+                            pass  # already removed by a reentrant publish
                 else:
                     weak_cb(event)
 
@@ -108,7 +138,10 @@ class EventBus:
                 if global_cb is not None:
                     global_cb(event)
                 else:
-                    self._global_subscribers.remove(weak_cb)
+                    try:
+                        self._global_subscribers.remove(weak_cb)
+                    except ValueError:
+                        pass  # already removed by a reentrant publish
             else:
                 weak_cb(event)
 
@@ -122,14 +155,26 @@ class Enrollment(ABC):
     def subscribe(
         self, event_type: Type[SpecificEvent], callback: Callable[[SpecificEvent], None]
     ) -> None:
-        """Subscribe to an event type with automatic tracking."""
+        """Subscribe to an event type with automatic tracking.
+
+        Subscriptions have set semantics: subscribing an already-subscribed
+        callback is a no-op.
+        """
         if event_type not in self._subscriptions:
             self._subscriptions[event_type] = []
+        if callback in self._subscriptions[event_type]:
+            return
         self._subscriptions[event_type].append(callback)  # type: ignore
         self._event_bus.subscribe(event_type, callback)
 
     def subscribe_global(self, callback: Callable[[Event], None]) -> None:
-        """Subscribe to all events with automatic tracking."""
+        """Subscribe to all events with automatic tracking.
+
+        Subscriptions have set semantics: subscribing an already-subscribed
+        callback is a no-op.
+        """
+        if callback in self._global_subscriptions:
+            return
         self._global_subscriptions.append(callback)
         self._event_bus.subscribe_global(callback)
 

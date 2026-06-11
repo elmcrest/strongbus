@@ -19,9 +19,9 @@ A type-safe event bus library for Python that provides reliable publish-subscrib
 pip install strongbus
 ```
 
-For development:
+For development (uses [uv](https://docs.astral.sh/uv/)):
 ```bash
-pip install -e .
+uv sync --extra dev
 ```
 
 ## Quick Start
@@ -85,6 +85,8 @@ event_bus.publish(OrderCreatedEvent(
     total=99.99
 ))
 ```
+
+Subscriptions have set semantics: a callback is either subscribed to an event type or it isn't. Subscribing the same callback again is a no-op, and `unsubscribe` removes it entirely.
 
 ### Enrollment
 
@@ -177,7 +179,7 @@ tox
 
 Run the test suite directly:
 ```bash
-python -m unittest src/strongbus/tests.py
+uv run --extra dev pytest
 ```
 
 ## Slightly larger example
@@ -266,3 +268,7 @@ if __name__ == "__main__":
     manager1.clear()
 
 ```
+
+## License
+
+[MIT](LICENSE)
