@@ -184,6 +184,16 @@ StrongBus automatically manages memory to prevent leaks:
 > lambda that captures `self` keeps that object alive until you unsubscribe it.
 > Subscribe bound methods when you want automatic cleanup.
 
+## Sync only
+
+Callbacks are called synchronously by `publish()` and are never awaited, so
+`async def` callbacks are not supported: subscribing a coroutine function
+raises `TypeError` at subscribe time (instead of silently producing an
+unawaited coroutine on every publish). To hand events off to asyncio code,
+subscribe a synchronous callback that schedules the work, e.g. via
+`asyncio.get_running_loop().create_task(...)` or
+`asyncio.run_coroutine_threadsafe(...)`.
+
 ## Error Handling
 
 A subscriber that raises does not affect delivery to other subscribers: every

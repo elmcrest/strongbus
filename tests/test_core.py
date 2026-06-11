@@ -588,6 +588,60 @@ class TestEventTypeValidation(unittest.TestCase):
         service.clear()
 
 
+class TestAsyncCallbackRejection(unittest.TestCase):
+    """publish() never awaits, so subscribing a coroutine function is
+    rejected up front instead of failing silently on every publish."""
+
+    def setUp(self):
+        self.bus = EventBus()
+
+    def test_subscribe_rejects_async_function(self):
+        async def handler(event: MyEvent) -> None:
+            pass
+
+        with self.assertRaises(TypeError):
+            self.bus.subscribe(MyEvent, handler)
+        self.assertEqual(self.bus._subscribers, {})  # pyright: ignore[reportPrivateUsage]
+
+    def test_subscribe_rejects_async_method(self):
+        class Subscriber:
+            async def on_event(self, event: MyEvent) -> None:
+                pass
+
+        sub = Subscriber()
+        with self.assertRaises(TypeError):
+            self.bus.subscribe(MyEvent, sub.on_event)
+        self.assertEqual(self.bus._subscribers, {})  # pyright: ignore[reportPrivateUsage]
+
+    def test_subscribe_global_rejects_async_function(self):
+        async def handler(event: Event) -> None:
+            pass
+
+        with self.assertRaises(TypeError):
+            self.bus.subscribe_global(handler)
+        self.assertEqual(self.bus._global_subscribers, [])  # pyright: ignore[reportPrivateUsage]
+
+    def test_enrollment_subscribe_rejects_async_and_does_not_track(self):
+        class Service(Enrollment):
+            pass
+
+        async def handler(event: MyEvent) -> None:
+            pass
+
+        async def global_handler(event: Event) -> None:
+            pass
+
+        service = Service(self.bus)
+        with self.assertRaises(TypeError):
+            service.subscribe(MyEvent, handler)
+        self.assertEqual(service._subscriptions, {})  # pyright: ignore[reportPrivateUsage]
+
+        with self.assertRaises(TypeError):
+            service.subscribe_global(global_handler)
+        self.assertEqual(service._global_subscriptions, [])  # pyright: ignore[reportPrivateUsage]
+        service.clear()
+
+
 class TestCallbackIdentityMatching(unittest.TestCase):
     """Callbacks are matched by identity, not ==, so a custom __eq__ can
     neither deduplicate nor unsubscribe a different handler."""

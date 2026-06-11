@@ -48,6 +48,18 @@ def _validate_event_type(event_type: object) -> None:
         raise TypeError(f"event_type must be an Event subclass, got {event_type!r}")
 
 
+def _validate_callback(callback: Callable[..., object]) -> None:
+    # publish() calls subscribers synchronously and never awaits, so an
+    # async callback would only ever produce an unawaited coroutine -
+    # reject it here, where the mistake is made, instead of failing
+    # silently on every publish.
+    if inspect.iscoroutinefunction(callback):
+        raise TypeError(
+            f"async callbacks are not supported: {callback!r} would never be "
+            "awaited by publish(). Subscribe a synchronous callback instead."
+        )
+
+
 def _is_subscribed(
     subscribers: list[SubscriberType], callback: Callable[..., None]
 ) -> bool:
@@ -102,9 +114,11 @@ class EventBus:
         callback is a no-op. Returns True if the callback was newly
         subscribed, False if it was already subscribed.
 
-        Raises TypeError if event_type is not an Event subclass.
+        Raises TypeError if event_type is not an Event subclass, or if
+        callback is a coroutine function (publish never awaits).
         """
         _validate_event_type(event_type)
+        _validate_callback(callback)
         with self._lock:
             self._flush_pending()
             if event_type not in self._subscribers:
@@ -130,7 +144,11 @@ class EventBus:
         Subscriptions have set semantics: subscribing an already-subscribed
         callback is a no-op. Returns True if the callback was newly
         subscribed, False if it was already subscribed.
+
+        Raises TypeError if callback is a coroutine function (publish
+        never awaits).
         """
+        _validate_callback(callback)
         with self._lock:
             self._flush_pending()
             if _is_subscribed(self._global_subscribers, callback):
@@ -284,12 +302,14 @@ class Enrollment:
         and ownership stays with the original subscriber; this enrollment
         will not track or remove that subscription.
 
-        Raises TypeError if event_type is not an Event subclass.
+        Raises TypeError if event_type is not an Event subclass, or if
+        callback is a coroutine function (publish never awaits).
         """
         with self._lock:
             if _is_subscribed(self._subscriptions.get(event_type, []), callback):
                 return
-            # subscribe first so a rejected event_type is never tracked;
+            # subscribe first so a rejected event_type or callback is never
+            # tracked;
             # only track what the bus actually added, so clear() never
             # removes a subscription this enrollment did not create
             if not self._event_bus.subscribe(event_type, callback):
@@ -305,6 +325,9 @@ class Enrollment:
         callback is a no-op. If the callback is already subscribed globally
         elsewhere, ownership stays with the original subscriber; this
         enrollment will not track or remove that subscription.
+
+        Raises TypeError if callback is a coroutine function (publish
+        never awaits).
         """
         with self._lock:
             if _is_subscribed(self._global_subscriptions, callback):

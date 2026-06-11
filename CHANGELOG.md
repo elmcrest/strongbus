@@ -2,6 +2,16 @@
 
 Notable changes to strongbus. History before 0.3.0 is in the git log.
 
+## [0.3.1] - 2026-06-11
+
+### Changed
+
+- `subscribe` and `subscribe_global` (on the bus and on `Enrollment`) now
+  raise `TypeError` when given a coroutine function. `publish` calls
+  subscribers synchronously and never awaits, so an `async def` callback
+  would only ever produce an unawaited coroutine; the mistake is now caught
+  at subscribe time instead of failing silently on every publish.
+
 ## [0.3.0] - 2026-06-11
 
 ### Changed
