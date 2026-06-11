@@ -286,6 +286,25 @@ class TestEventBusEdgeCases(unittest.TestCase):
         self.assertEqual(initial_count, 2)
         self.assertEqual(final_count, 1)
 
+    def test_dead_method_cleaned_without_publishing_its_event_type(self):
+        """Dead entries are purged on any bus operation, not just a publish
+        of the same event type"""
+
+        class Subscriber:
+            def on_event(self, event: MyEvent):
+                pass
+
+        sub = Subscriber()
+        self.bus.subscribe(MyEvent, sub.on_event)
+        self.assertEqual(len(self.bus._subscribers[MyEvent]), 1)  # pyright: ignore[reportPrivateUsage]
+
+        del sub
+        gc.collect()
+
+        # Publish an unrelated event type - MyEvent's dead entry must go too
+        self.bus.publish(AnotherEvent(42))
+        self.assertEqual(len(self.bus._subscribers[MyEvent]), 0)  # pyright: ignore[reportPrivateUsage]
+
     def test_untyped_event_raises(self):
         with self.assertRaises(TypeError):
             self.bus.publish("untyped_event")

@@ -35,16 +35,18 @@ StrongBus is a type-safe event bus library with three core components:
 
 ### Key Design Patterns
 - **Type Safety**: Callbacks are typed to receive specific event types using generics
-- **Memory Management**: Automatic cleanup of dead method references via `weakref.WeakMethod`
+- **Memory Management**: Automatic cleanup of dead method references via `weakref.WeakMethod`; death callbacks queue dead entries in `_pending_removals`, purged on the next bus operation under the lock
 - **Event Isolation**: Events don't propagate to parent/child types - exact type matching only (global subscribers receive everything)
 - **Subscription Tracking**: Enrollment pattern allows bulk unsubscription
 - **Set Semantics**: Subscribing an already-subscribed callback is a no-op; a callback is either subscribed or not
+- **Thread Safety**: All operations are guarded by an RLock; publish snapshots subscriber lists under the lock but invokes callbacks outside it (so callbacks can re-enter the bus). WeakMethod death callbacks may fire at any moment on any thread, so they only append to `_pending_removals` and never touch the lock
 
 ### Project Structure
 - `src/strongbus/__init__.py`: Public API exports (EventBus, Event, Enrollment)
 - `src/strongbus/core.py`: Core implementation
-- `src/strongbus/test_core.py`: Comprehensive test suite
 - `src/strongbus/py.typed`: Marker that the package ships type hints
+- `tests/test_core.py`: Core test suite
+- `tests/test_threading.py`: Concurrency tests
 
 ### Dependencies
 - Zero runtime dependencies (pure Python)
@@ -54,5 +56,5 @@ StrongBus is a type-safe event bus library with three core components:
 ### Testing Strategy
 - Tests are written with Python's unittest framework and run via pytest
 - Mock objects for testing callbacks
-- Tests cover weak reference cleanup, type isolation, global subscriptions, and memory management
+- Tests cover weak reference cleanup, type isolation, global subscriptions, memory management, and thread safety (concurrent publish/subscribe churn, GC of subscribers during publishing)
 - CI (GitHub Actions) runs `tox` against Python 3.10–3.14 and uploads coverage to Codecov

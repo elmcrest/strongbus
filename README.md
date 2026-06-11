@@ -161,6 +161,23 @@ StrongBus automatically manages memory to prevent leaks:
 - **Function callbacks** use strong references and persist until explicitly unsubscribed
 - **Enrollment pattern** provides easy bulk cleanup with `clear()`
 
+> **Warning:** Only bound methods are held weakly. Lambdas, `functools.partial`
+> objects, and callable instances count as functions and are held strongly — a
+> lambda that captures `self` keeps that object alive until you unsubscribe it.
+> Subscribe bound methods when you want automatic cleanup.
+
+## Thread Safety
+
+`EventBus` and `Enrollment` are thread-safe: subscribing, unsubscribing, and
+publishing may happen concurrently from any number of threads.
+
+Callbacks are invoked on the thread that calls `publish()`, outside the bus's
+internal lock. This means:
+
+- A callback may freely subscribe, unsubscribe, or publish further events without deadlocking.
+- If events are published from multiple threads, your callbacks must be thread-safe themselves.
+- A subscription added while a publish is in flight only receives subsequent events.
+
 ## Testing
 
 ### Using tox (recommended)
