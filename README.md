@@ -106,7 +106,7 @@ methods) to keep their lifecycles independent.
 
 ### Enrollment
 
-A base class that simplifies subscription management:
+A base class that simplifies subscription management. See [Wiring the Event Bus in Your Application](#wiring-the-event-bus-in-your-application) below for guidance on creating the bus and passing it into your services in a real application:
 
 ```python
 class OrderProcessor(Enrollment):
@@ -123,6 +123,95 @@ class OrderProcessor(Enrollment):
         # Handle payment confirmation
         pass
 ```
+
+## Wiring the Event Bus in Your Application
+
+StrongBus does not provide (or assume) a global or singleton bus instance. The recommended pattern is to create one or more `EventBus` instances at your composition root or application factory and pass the instance explicitly to the objects that need it.
+
+This approach has several advantages:
+
+- Dependencies are visible in constructors
+- Testing is straightforward: create a fresh `EventBus()` per test for complete isolation (this is exactly what the library's own test suite does)
+- Multiple independent buses are easy when you need them (e.g. separate business-domain events from system/audit events, or isolated buses per subsystem or tenant)
+- It works naturally with `Enrollment`, whose constructor takes the bus
+
+### Composition root / startup wiring
+
+Create the bus once during application startup and wire your services there:
+
+```python
+from strongbus import EventBus
+from .services import NotificationService, AuditLogger, OrderProcessor
+
+def create_app():
+    """Typical composition root or application factory."""
+    event_bus = EventBus()
+
+    # Cross-cutting concerns (frequently using global subscriptions) are often wired first
+    audit_logger = AuditLogger(event_bus)
+
+    # Domain services
+    notifications = NotificationService(event_bus)
+    processor = OrderProcessor(event_bus)
+
+    # Return whatever container or object your app uses
+    return {
+        "bus": event_bus,
+        "services": {
+            "audit": audit_logger,
+            "notifications": notifications,
+            "processor": processor,
+        },
+    }
+```
+
+Call this once when your process starts. On shutdown, call `.clear()` on any long-lived `Enrollment` instances if you want deterministic unsubscription.
+
+### Frameworks and existing DI containers
+
+If you use a web framework or a dependency-injection library:
+
+- Store the bus on your application object (`app.bus`, `app.state.event_bus`, etc.)
+- Register the bus instance in your DI container and inject it into `Enrollment` subclass constructors at startup time
+- Create long-lived subscriber services at application startup, not per-request
+
+You can also let a high-level coordinator or "App" class inherit from `Enrollment` directly:
+
+```python
+class MyApplication(Enrollment):
+    def __init__(self):
+        super().__init__(EventBus())
+        self.subscribe(OrderCreatedEvent, self.on_order_created)
+        # ...
+
+    def on_order_created(self, event: OrderCreatedEvent) -> None:
+        ...
+```
+
+Once wired, the coordinator can publish via `self.publish(SomeEvent(...))` as well as `clear()` itself on shutdown.
+
+### Short-lived subscribers
+
+For objects that only need to listen for a limited time (a request handler, a background job, etc.), instantiate an `Enrollment`, subscribe what you need, do the work, and call `clear()` when finished.
+
+### Testing
+
+Create a fresh bus for every test. This gives you perfect isolation with no shared global state:
+
+```python
+def test_order_processing():
+    bus = EventBus()
+    processor = OrderProcessor(bus)
+
+    bus.publish(UserLoginEvent(username="test"))
+    # assertions...
+
+    # Explicit clear is usually unnecessary in tests when using bound methods,
+    # but harmless and good for symmetry with production shutdown code.
+    processor.clear()
+```
+
+The large example near the end of this document follows the same explicit-wiring style inside its `if __name__ == "__main__":` block.
 
 ## Global Event Subscriptions
 
@@ -184,7 +273,7 @@ StrongBus automatically manages memory to prevent leaks:
 > lambda that captures `self` keeps that object alive until you unsubscribe it.
 > Subscribe bound methods when you want automatic cleanup.
 
-## Sync only
+## Sync only (for now)
 
 Callbacks are called synchronously by `publish()` and are never awaited, so
 `async def` callbacks are not supported: subscribing a coroutine function
